@@ -1,0 +1,30 @@
+name: Run Unreal Problem Bot
+
+on:
+  schedule:
+    # 매일 오후 6시(KST 기준, UTC 09:00)에 자동 실행
+    - cron: '0 9 * * *'
+  workflow_dispatch: # 수동으로도 버튼을 눌러서 실행할 수 있게 설정
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install requests google-generativeai
+
+      - name: Run script
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python bot.py
