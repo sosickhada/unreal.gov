@@ -1,9 +1,12 @@
 import os
 import datetime
+import requests
 import google.generativeai as genai
 
-# 설정
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY")
+# 설정 (GitHub Secrets에서 환경 변수로 안전하게 불러오기)
+TELEGRAM_BOT_TOKEN = "8922920436:AAH_c8eRLeoFsnaJMTOqmaO3pWw0HsaRXuc"
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 # Gemini 설정
 genai.configure(api_key=GEMINI_API_KEY)
@@ -20,10 +23,10 @@ def generate_trend_cases():
     
     [후보 1]
     - 트렌드/이슈 배경: (어떤 상황인지 한 줄 요약)
-    - 사건명: (예: 친구의 "밥 한번 먹자" 미이행 건)
-    - 접수 유형: (예: 약속 불이행)
-    - 처분/판정 가안: (예: 재발 시 날짜를 반드시 제시할 것)
-    - 첫 장 훅 문구: (보는 즉시 공감하고 공유하고 싶어지는 한 문장)
+    - 사건명: 
+    - 접수 유형: 
+    - 처분/판정 가안: 
+    - 첫 장 훅 문구: 
 
     [후보 2]
     (위와 동일한 형식)
@@ -36,17 +39,33 @@ def generate_trend_cases():
     response = model.generate_content(prompt)
     return response.text
 
+def send_telegram_message(text):
+    """텔레그램으로 기획안 전송"""
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": text
+    }
+    response = requests.post(url, json=payload)
+    return response.json()
+
 if __name__ == "__main__":
     print("최신 트렌드 및 비현실문제해결국 기획안 생성 중...")
     cases_text = generate_trend_cases()
     
-    # 오늘 날짜 기반 파일 이름 생성
+    full_message = "🚨 [비현실문제해결국] 최신 트렌드 기획 후보 3선\n\n" + cases_text
+    
+    # 텔레그램 전송 (Secret에 등록된 ID가 있을 때만 전송)
+    if TELEGRAM_CHAT_ID:
+        res = send_telegram_message(full_message)
+        print("텔레그램 전송 결과:", res)
+    else:
+        print("TELEGRAM_CHAT_ID가 설정되지 않았습니다.")
+        
+    # 파일 백업 저장 (깃허브 cases 폴더에도 안전하게 동시 저장)
     today = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     os.makedirs("cases", exist_ok=True)
     file_path = f"cases/trend_plan_{today}.txt"
-    
-    # 결과 내용을 텍스트 파일로 저장
     with open(file_path, "w", encoding="utf-8") as f:
-        f.write("[비현실문제해결국] 최신 트렌드 기반 기획 후보 3선\n\n" + cases_text)
-        
-    print(f"트렌드 기획안 파일 저장 완료: {file_path}")
+        f.write(full_message)
+    print(f"기획안 파일 저장 완료: {file_path}")
