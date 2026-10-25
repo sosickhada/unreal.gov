@@ -38,6 +38,49 @@ def make_fixed_slide(image_path):
     )
 
 
+def make_figma_content(s, title):
+    """Slide 2: editable text on the original Figma composition."""
+    import base64
+    from pathlib import Path
+    from html import escape
+    root = Path("/opt/unreal-github/figma_assets")
+    image_path = s.get("background_image") or str(root / "content_background.png")
+    background = Path(image_path)
+    if not background.is_file():
+        raise FileNotFoundError(f"Slide 2 background missing: {background}")
+    mime = "image/png" if background.suffix.lower() == ".png" else "image/jpeg"
+    bg = base64.b64encode(background.read_bytes()).decode()
+    font = base64.b64encode((root / "fonts/ROKG_R.ttf").read_bytes()).decode()
+    logo = base64.b64encode((root / "cover_logo_exact.svg").read_bytes()).decode()
+    extras = ""
+    for name,x,y,w,h in [
+        ("logo_ellipse10.svg",61,66,51,51),
+        ("logo_vector7.svg",92.75,61.5,16.049,13.039),
+        ("logo_vector6.svg",62.45,59.47,14.183,15.034),
+    ]:
+        encoded = base64.b64encode((root/name).read_bytes()).decode()
+        extras += f'<img style="position:absolute;left:{x}px;top:{y}px;width:{w}px;height:{h}px" src="data:image/svg+xml;base64,{encoded}">'
+    eyebrow = escape(str(s.get("eyebrow") or "민원 접수 유형"))
+    body = escape(str(s.get("body") or s.get("headline") or "")).replace("\\n","<br>")
+    case = escape(str(s.get("case_number") or "사건번호 제 2026-1024호"))
+    return f"""<!doctype html><html lang="ko"><meta charset="utf-8">
+<style>
+@font-face{{font-family:ROKG;src:url(data:font/ttf;base64,{font})}}
+*{{box-sizing:border-box}}body{{margin:0;width:1080px;height:1350px;overflow:hidden;background:#101923;color:white}}
+.bg{{position:absolute;left:-496px;top:-90px;width:1977px;height:1483px;background:url(data:{mime};base64,{bg}) center/cover no-repeat}}
+.shade{{position:absolute;left:0;top:584px;width:1080px;height:766px;background:linear-gradient(to bottom,transparent,rgba(0,0,0,.5))}}
+.line{{position:absolute;left:63px;top:128px;width:947px;height:1px;background:rgba(255,255,255,.8)}}
+.case{{position:absolute;right:65px;top:75px;font:21px/1.4 ROKG;white-space:nowrap}}
+.eyebrow{{position:absolute;left:102px;top:783px;font:52.953px/1.15 ROKG;letter-spacing:-1.06px}}
+.under{{position:absolute;left:103px;top:939px;width:292px;height:5px;background:white}}
+.body{{position:absolute;left:102px;top:897px;width:874px;font:32.283px/1.85 'ChosunilboNM','Noto Serif KR',serif;letter-spacing:-.97px;white-space:pre-wrap;word-break:keep-all}}
+.logo{{position:absolute;left:64px;top:61px;width:45.487px;height:51.744px}}
+.logotext{{position:absolute;left:124px;top:78.63px;font:24.207px ROKG;white-space:nowrap}}
+</style><body><div class="bg"></div><div class="shade"></div><div class="line"></div>
+{extras}<img class="logo" src="data:image/svg+xml;base64,{logo}"><div class="logotext">비현실문제해결부</div>
+<div class="case">{case}</div><div class="eyebrow">{eyebrow}</div><div class="under"></div><div class="body">{body}</div></body></html>"""
+
+
 def make_figma_cover(s, title):
     from pathlib import Path
     import base64
@@ -265,6 +308,8 @@ async def _render(draft, prefix):
                     markup = (
                         make_figma_cover(slide, draft.get('title', '비현실문제해결부'))
                         if i == 0 else
+                        make_figma_content(slide, draft.get('title', '비현실문제해결부'))
+                        if i == 1 else
                         make_fixed_slide(FIXED_SLIDE_IMAGES[i])
                         if i in FIXED_SLIDE_IMAGES else
                         make_html(slide, i, len(draft['slides']),
