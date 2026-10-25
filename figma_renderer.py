@@ -40,8 +40,6 @@ def make_fixed_slide(image_path):
 
 def make_figma_content(s, title):
     """Slide 2: editable text on the original Figma composition."""
-    import base64
-    from urllib.parse import quote
     from pathlib import Path
     from html import escape
     import re
@@ -50,7 +48,6 @@ def make_figma_content(s, title):
     background = Path(image_path)
     if not background.is_file():
         raise FileNotFoundError(f"Slide 2 background missing: {background}")
-    mime = "image/png" if background.suffix.lower() == ".png" else "image/jpeg"
     bg = background.resolve().as_uri()
     font = (root / "fonts/ROKG_R.ttf").resolve().as_uri()
     logo = (root / "cover_logo_exact.svg").resolve().as_uri()
@@ -77,7 +74,7 @@ def make_figma_content(s, title):
     case = escape(str(s.get("case_number") or "사건번호 제 2026-1024호"))
     return f"""<!doctype html><html lang="ko"><meta charset="utf-8">
 <style>
-@font-face{{font-family:ROKG;src:url("{font}")}}\n@font-face{{font-family:ChosunilboNM;src:url("{chosun64}")}}
+@font-face{{font-family:ROKG;src:url("{font}")}}\n@font-face{{font-family:ChosunilboNM;src:url("{chosun64}") format("truetype");font-weight:400;font-style:normal;font-display:block}}
 *{{box-sizing:border-box}}body{{margin:0;width:1080px;height:1350px;overflow:hidden;background:#101923;color:white}}
 .bg{{position:absolute;left:-496px;top:-90px;width:1977px;height:1483px;background:url("{bg}") center/cover no-repeat}}
 .bottom-blur{{position:absolute;left:0;top:560px;width:1080px;height:790px;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);mask-image:linear-gradient(to bottom,transparent,black 80%);-webkit-mask-image:linear-gradient(to bottom,transparent,black 80%)}}\n.shade{{position:absolute;left:0;top:540px;width:1080px;height:810px;background:linear-gradient(to bottom,transparent,rgba(5,28,61,.46) 38%,rgba(3,18,45,.94) 100%)}}
@@ -86,7 +83,7 @@ def make_figma_content(s, title):
 .eyebrow{{position:absolute;left:102px;top:783px;font:52.953px/1.15 ROKG;letter-spacing:-1.06px}}
 .under{{position:absolute;left:103px;top:939px;width:292px;height:5px;background:white}}
 .body{{position:absolute;left:102px;top:897px;width:874px;font:32.283px/1.85 ChosunilboNM,serif;letter-spacing:-.97px;white-space:pre-wrap;word-break:keep-all}}
-.emphasis{{text-decoration:underline;text-decoration-color:white;text-decoration-thickness:5px;text-underline-offset:9px;text-decoration-skip-ink:none}}\n.logo{{position:absolute;left:64px;top:61px;width:45.487px;height:51.744px}}
+.emphasis{{position:relative;white-space:normal}}\n.emphasis::after{{content:"";position:absolute;left:0;right:0;top:52%;height:0;border-top:5px solid rgba(255,255,255,.95);transform:rotate(-1deg);pointer-events:none}}\n.logo{{position:absolute;left:64px;top:61px;width:45.487px;height:51.744px}}
 .logotext{{position:absolute;left:124px;top:78.63px;font:24.207px ROKG;white-space:nowrap}}
 </style><body><div class="bg"></div><div class="bottom-blur"></div><div class="shade"></div><div class="line"></div>
 {extras}<img class="logo" src="{logo}"><div class="logotext">비현실문제해결부</div>
@@ -343,6 +340,10 @@ async def _render(draft, prefix):
                     else:
                         await page.set_content(markup, wait_until='load', timeout=45000)
                     await page.evaluate('document.fonts.ready')
+                    if i == 1:
+                        font_status = await page.evaluate('''async () => { await document.fonts.load('32px ChosunilboNM', '퇴근 방해 및 용어 왜곡'); return {loaded: document.fonts.check('32px ChosunilboNM', '퇴근 방해 및 용어 왜곡'), status: document.fonts.status}; }''')
+                        if not font_status['loaded']:
+                            raise RuntimeError(f'ChosunilboNM font failed to load: {font_status}')
                     path = str(pfx.parent / (pfx.name + f'_{i+1:02d}.png'))
                     await page.screenshot(path=path, type='png', timeout=45000)
                     paths.append(path)
