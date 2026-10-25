@@ -11,7 +11,7 @@ from figma_renderer import render_carousel, expand_slides
 def choose_pixabay_photos(draft, env):
     """Choose distinct, context-relevant dark photographs for content and interim verdict."""
     from io import BytesIO
-    from PIL import Image, ImageStat
+    from PIL import Image, ImageStat, ImageFilter
     from anthropic import Anthropic
 
     pages = expand_slides(draft)
@@ -54,7 +54,7 @@ def choose_pixabay_photos(draft, env):
                 resp = requests.get('https://pixabay.com/api/', params={'key':key,'q':query,'image_type':'photo','orientation':'vertical','per_page':20,'safesearch':'true'},timeout=25)
                 resp.raise_for_status()
                 for rank, photo in enumerate(resp.json().get('hits', [])):
-                    if photo['id'] not in used and photo.get('imageWidth', 0) >= 900:
+                    if photo['id'] not in used and photo.get('imageWidth', 0) >= 1080 and photo.get('imageHeight', 0) >= 1350:
                         candidates.append((rank, photo, query))
                 if candidates:
                     break
@@ -71,19 +71,34 @@ def choose_pixabay_photos(draft, env):
         scored = []
         for rank, photo, query in candidates[:35]:
             try:
-                url = photo.get('webformatURL') or photo.get('largeImageURL')
+                url = photo.get('largeImageURL')
+                if not url:
+                    continue
                 response = requests.get(url, timeout=20)
                 response.raise_for_status()
                 im = Image.open(BytesIO(response.content)).convert('RGB')
-                im.thumbnail((128, 128))
-                mean = sum(ImageStat.Stat(im).mean)/3
+                width, height = im.size
+                # Verify downloaded resolution after a 4:5 center crop.
+                crop_width = min(width, int(height * 4 / 5))
+                crop_height = min(height, int(width * 5 / 4))
+                if crop_width < 1080 or crop_height < 1350:
+                    print(f"저해상도 제외: Pixabay {photo['id']} / 실제 {width}x{height}", flush=True)
+                    continue
+                sample = im.copy()
+                sample.thumbnail((256, 256))
+                mean = sum(ImageStat.Stat(sample).mean) / 3
+                edges = sample.convert('L').filter(ImageFilter.FIND_EDGES)
+                sharpness = ImageStat.Stat(edges).var[0]
+                if sharpness < 35:
+                    print(f"선명도 부족 제외: Pixabay {photo['id']} / 점수 {sharpness:.0f}", flush=True)
+                    continue
                 # Reject overly bright photos; among dark candidates prefer search relevance.
                 if mean <= 155:
                     scored.append((rank + max(0, mean-95)*0.3, photo, response.content, mean, query))
             except (requests.RequestException, OSError):
                 continue
         if not scored:
-            raise RuntimeError(f'{kind}: 내용에 맞는 어두운 사진을 찾지 못했습니다. 임의의 무관한 사진으로 대체하지 않습니다.')
+            raise RuntimeError(f'{kind}: 1080x1350 실해상도·선명도·어두운 톤을 충족하는 사진이 없습니다. 저화질 사진으로 대체하지 않습니다.')
         _, selected, content, brightness, query = min(scored, key=lambda x:x[0])
         used.add(selected['id'])
         file_path = asset_dir / f'pixabay-auto-{kind}-{selected["id"]}.jpg'
