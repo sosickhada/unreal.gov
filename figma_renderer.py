@@ -16,7 +16,6 @@ def make_html(s, i, n, title):
 # Fixed slides use a single approved image each. Never replace these with
 # search results or AI-generated imagery.
 FIXED_SLIDE_IMAGES = {
-    2: Path("/opt/unreal-github/figma_assets/resolution_fixed.png"),
     3: Path("/opt/unreal-github/figma_assets/ending_fixed.png"),
 }
 
@@ -298,6 +297,40 @@ body {{
 </body>
 </html>"""
 
+
+def make_figma_resolution(s, title):
+    """Slide 3: Figma verdict layout with dynamic copy and original artwork."""
+    from pathlib import Path
+    from html import escape
+    root = Path("/opt/unreal-github/figma_assets")
+    background = root / "resolution_background.png"
+    stroke = root / "resolution_emphasis.svg"
+    if not background.is_file():
+        raise FileNotFoundError(f"Figma slide 3 background missing: {background}")
+    if not stroke.is_file():
+        raise FileNotFoundError(f"Figma slide 3 emphasis SVG missing: {stroke}")
+    data = dict(s)
+    data.setdefault("eyebrow", "처분/판정안")
+    # The verdict is a paragraph, not a baked-in image or static headline.
+    data["body"] = data.get("body") or data.get("verdict") or data.get("resolution") or data.get("headline") or ""
+    data["background_image"] = str(background)
+    markup = make_figma_content(data, title)
+    # Preserve the already-approved typography, responsive emphasis placement and logo.
+    # Swap only the frame-specific Figma background, stroke, and black bottom gradient.
+    markup = markup.replace(
+        (root / "content_emphasis.svg").resolve().as_uri(),
+        stroke.resolve().as_uri()
+    )
+    markup = markup.replace(
+        'left:-496px;top:-90px;width:1977px;height:1483px;',
+        'left:-47px;top:-50px;width:1159px;height:1448px;filter:blur(25px);'
+    )
+    markup = markup.replace(
+        'background:linear-gradient(to bottom,transparent,rgba(5,28,61,.46) 38%,rgba(3,18,45,.94) 100%)',
+        'background:linear-gradient(to bottom,transparent,rgba(0,0,0,.18) 38%,rgba(0,0,0,.72) 100%)'
+    )
+    return markup
+
 async def _render(draft, prefix):
     pfx=Path(prefix); pfx.parent.mkdir(parents=True,exist_ok=True); paths=[]
     async with async_playwright() as p:
@@ -322,12 +355,14 @@ async def _render(draft, prefix):
                         if i == 0 else
                         make_figma_content(slide, draft.get('title', '비현실문제해결부'))
                         if i == 1 else
+                        make_figma_resolution(slide, draft.get('title', '비현실문제해결부'))
+                        if i == 2 else
                         make_fixed_slide(FIXED_SLIDE_IMAGES[i])
                         if i in FIXED_SLIDE_IMAGES else
                         make_html(slide, i, len(draft['slides']),
                                   draft.get('title', '비현실문제부 심의 기록'))
                     )
-                    if i == 1:
+                    if i in (1, 2):
                         # file:// HTML can load adjacent local image/font assets.
                         # about:blank + set_content cannot reliably load file:// URLs.
                         with tempfile.NamedTemporaryFile(
@@ -343,7 +378,7 @@ async def _render(draft, prefix):
                     else:
                         await page.set_content(markup, wait_until='load', timeout=45000)
                     await page.evaluate('document.fonts.ready')
-                    if i == 1:
+                    if i in (1, 2):
                         font_status = await page.evaluate('''async () => { await document.fonts.load('32px ChosunilboNM', '퇴근 방해 및 용어 왜곡'); return {loaded: document.fonts.check('32px ChosunilboNM', '퇴근 방해 및 용어 왜곡'), status: document.fonts.status}; }''')
                         if not font_status['loaded']:
                             raise RuntimeError(f'ChosunilboNM font failed to load: {font_status}')
