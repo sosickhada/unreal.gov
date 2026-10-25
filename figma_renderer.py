@@ -298,7 +298,7 @@ body {{
 </html>"""
 
 
-def make_figma_resolution(s, title):
+def make_figma_resolution(s, title, extra_background=False):
     """Slide 3: Figma verdict layout with dynamic copy and original artwork."""
     from pathlib import Path
     from html import escape
@@ -313,7 +313,7 @@ def make_figma_resolution(s, title):
     data.setdefault("eyebrow", "처분/판정안")
     # The verdict is a paragraph, not a baked-in image or static headline.
     data["body"] = data.get("body") or data.get("verdict") or data.get("resolution") or data.get("headline") or ""
-    data["background_image"] = str(background)
+    data["background_image"] = (data.get("background_image") or str(root / "content_background.png")) if extra_background else str(background)
     markup = make_figma_content(data, title)
     # Preserve the already-approved typography, responsive emphasis placement and logo.
     # Swap only the frame-specific Figma background, stroke, and black bottom gradient.
@@ -331,40 +331,70 @@ def make_figma_resolution(s, title):
     )
     return markup
 
+def expand_slides(draft):
+    """Expand long verdicts without changing the approved final-verdict artwork."""
+    slides = draft["slides"]
+    if len(slides) != 4:
+        raise ValueError("Expected four source slides before expansion")
+    cover, content, verdict, ending = slides
+    body = str(verdict.get("body") or "")
+    paragraphs = [p.strip() for p in body.split("\\n\\n") if p.strip()]
+    # Keep short verdicts as a single approved Figma page.
+    if len(body) <= 190:
+        return [("cover", cover), ("content", content),
+                ("resolution_final", verdict), ("ending", ending)]
+    # Reserve the last paragraph (the actual decision) for the original final page.
+    if len(paragraphs) < 2:
+        sentences = __import__("re").split(r"(?<=[.!?。])\\s+", body)
+        midpoint = max(1, len(sentences) // 2)
+        paragraphs = [" ".join(sentences[:midpoint]), " ".join(sentences[midpoint:])]
+    leading, final = "\\n\\n".join(paragraphs[:-1]), paragraphs[-1]
+    if not leading or not final:
+        return [("cover", cover), ("content", content),
+                ("resolution_final", verdict), ("ending", ending)]
+    extra = dict(verdict, body=leading, eyebrow="처분/판정안 · 심의 경과",
+                 emphasis=[t for t in verdict.get("emphasis", []) if t in leading])
+    last = dict(verdict, body=final,
+                emphasis=[t for t in verdict.get("emphasis", []) if t in final])
+    return [("cover", cover), ("content", content),
+            ("resolution_extra", extra), ("resolution_final", last),
+            ("ending", ending)]
+
+
 async def _render(draft, prefix):
-    pfx=Path(prefix); pfx.parent.mkdir(parents=True,exist_ok=True); paths=[]
+    pfx = Path(prefix)
+    pfx.parent.mkdir(parents=True, exist_ok=True)
+    paths = []
+    pages = expand_slides(draft)
     async with async_playwright() as p:
-        # Keep the browser profile in RAM to avoid slow disk I/O on the VM.
-        # TemporaryDirectory removes it after rendering (including on errors).
         with tempfile.TemporaryDirectory(prefix='unreal-render-', dir='/dev/shm') as profile:
             context = await p.chromium.launch_persistent_context(
-                user_data_dir=profile,
-                headless=True,
+                user_data_dir=profile, headless=True,
                 viewport={'width': WIDTH, 'height': HEIGHT},
-                device_scale_factor=1,
-                timeout=45000,
+                device_scale_factor=1, timeout=45000,
                 args=['--no-sandbox', '--disable-dev-shm-usage',
                       '--disable-gpu', '--disable-extensions',
                       '--disable-background-networking', '--no-first-run'],
             )
             try:
                 page = context.pages[0] if context.pages else await context.new_page()
-                for i, slide in enumerate(draft['slides']):
-                    markup = (
-                        make_figma_cover(slide, draft.get('title', '비현실문제해결부'))
-                        if i == 0 else
-                        make_figma_content(slide, draft.get('title', '비현실문제해결부'))
-                        if i == 1 else
-                        make_figma_resolution(slide, draft.get('title', '비현실문제해결부'))
-                        if i == 2 else
-                        make_fixed_slide(FIXED_SLIDE_IMAGES[i])
-                        if i in FIXED_SLIDE_IMAGES else
-                        make_html(slide, i, len(draft['slides']),
-                                  draft.get('title', '비현실문제부 심의 기록'))
-                    )
-                    if i in (1, 2):
-                        # file:// HTML can load adjacent local image/font assets.
-                        # about:blank + set_content cannot reliably load file:// URLs.
+                for i, (kind, slide) in enumerate(pages):
+                    title = draft.get('title', '비현실문제해결부')
+                    if kind == "cover":
+                        markup = make_figma_cover(slide, title)
+                    elif kind == "content":
+                        markup = make_figma_content(slide, title)
+                    elif kind == "resolution_extra":
+                        # Same verdict typography, with a replaceable content image.
+                        extra = dict(slide)
+                        extra.setdefault("background_image", str(Path("/opt/unreal-github/figma_assets/content_background.png")))
+                        markup = make_figma_resolution(extra, title, extra_background=True)
+                    elif kind == "resolution_final":
+                        markup = make_figma_resolution(slide, title)
+                    else:
+                        markup = make_fixed_slide(Path("/opt/unreal-github/figma_assets/ending_fixed.png"))
+                    needs_file = kind in ("content", "resolution_extra", "resolution_final")
+                    if needs_file:
                         with tempfile.NamedTemporaryFile(
                             mode='w', suffix='.html', encoding='utf-8',
                             dir='/opt/unreal-github/figma_assets', delete=False
@@ -378,10 +408,20 @@ async def _render(draft, prefix):
                     else:
                         await page.set_content(markup, wait_until='load', timeout=45000)
                     await page.evaluate('document.fonts.ready')
-                    if i in (1, 2):
-                        font_status = await page.evaluate('''async () => { await document.fonts.load('32px ChosunilboNM', '퇴근 방해 및 용어 왜곡'); return {loaded: document.fonts.check('32px ChosunilboNM', '퇴근 방해 및 용어 왜곡'), status: document.fonts.status}; }''')
-                        if not font_status['loaded']:
-                            raise RuntimeError(f'ChosunilboNM font failed to load: {font_status}')
+                    if needs_file:
+                        loaded = await page.evaluate("""async () => {
+                          await document.fonts.load('32px ChosunilboNM', '퇴근 방해 및 용어 왜곡');
+                          return document.fonts.check('32px ChosunilboNM', '퇴근 방해 및 용어 왜곡');
+                        }""")
+                        if not loaded:
+                            raise RuntimeError("ChosunilboNM font failed to load")
+                        # Fail loudly rather than silently clipping verdict copy.
+                        fits = await page.evaluate("""() => {
+                          const el = document.querySelector('.body');
+                          return !el || el.getBoundingClientRect().bottom <= 1330;
+                        }""")
+                        if not fits:
+                            raise ValueError(f"Slide {i+1} text exceeds safe area; split the source verdict into shorter paragraphs")
                     path = str(pfx.parent / (pfx.name + f'_{i+1:02d}.png'))
                     await page.screenshot(path=path, type='png', timeout=45000)
                     paths.append(path)
@@ -389,5 +429,6 @@ async def _render(draft, prefix):
                 await context.close()
     return paths
 
+
 def render_carousel(draft, output_prefix):
-    return asyncio.run(_render(draft,output_prefix))
+    return asyncio.run(_render(draft, output_prefix))
