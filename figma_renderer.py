@@ -21,7 +21,7 @@ def make_figma_cover(s, title):
     esc = lambda x: html.escape(str(x or ''))
 
     background = Path("/opt/unreal-github/figma_assets/cover_background.png")
-    logo = Path("/opt/unreal-github/figma_assets/cover_logo_exact.svg")
+    logo = Path("/opt/unreal-github/figma_assets/cover_logo_horizontal.png")
 
     image_path = s.get("background_image")
     if image_path:
@@ -32,7 +32,7 @@ def make_figma_cover(s, title):
     mime = "image/png" if background.suffix.lower() == ".png" else ("image/webp" if background.suffix.lower() == ".webp" else "image/jpeg")
     bg64 = base64.b64encode(background.read_bytes()).decode()
     if not logo.is_file():
-        raise FileNotFoundError("Figma cover logo asset missing: " + str(logo))
+        raise FileNotFoundError("Figma horizontal logo asset missing: " + str(logo))
     logo64 = base64.b64encode(logo.read_bytes()).decode()
 
     font_dir = Path("/opt/unreal-github/figma_assets/fonts")
@@ -104,29 +104,16 @@ body {{
     position: absolute;
     left: 64px;
     top: 61px;
-    display: flex;
-    align-items: center;
-    gap: 15px;
+    width: 237px;
     height: 52px;
 }}
-
 .logo img {{
-    width: 46px;
-    height: 52px;
+    display: block;
+    width: 237px;
+    height: auto;
     object-fit: contain;
     filter: none;
 }}
-
-.logo span {{
-    font-size: 24px;
-    font-weight: 600;
-    line-height: 1;
-    white-space: nowrap;
-    display: flex;
-    align-items: center;
-    height: 52px;
-}}
-
 .case-number {{
     position: absolute;
     right: 70px;
@@ -180,13 +167,6 @@ body {{
     top: 226px;
     text-align: right;
 }}
-.quote.close {{
-    left: 681px;
-    top: 609.5625px;
-    text-align: right;
-    transform: rotate(180deg);
-    transform-origin: center center;
-}}
 .headline {{ z-index: 3; }}
 </style>
 </head>
@@ -195,17 +175,13 @@ body {{
 <div class="top-blur"></div>
 <div class="overlay"></div>
 
-<div class="logo">
-    <img src="data:image/svg+xml;base64,{logo64}">
-    <span>비현실문제해결부</span>
-</div>
+<div class="logo"><img src="data:image/png;base64,{logo64}"></div>
 
 <div class="case-number">사건번호 제 2026-1024호</div>
 <div class="top-line"></div>
 
 <div class="eyebrow">{eyebrow}</div>
 <div class="quote open">“</div>
-<div class="quote close">“</div>
 <div class="headline">{headline}</div>
 </body>
 </html>"""
