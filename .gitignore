@@ -4,3 +4,23 @@ __pycache__/
 *.pyc
 data/
 output/
+
+# Local databases
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+
+# Secrets and local configuration
+.env.*
+*.pem
+*.key
+
+# Temporary backups
+*.backup
+*.bak
+*.before_*
+
+# Local assets and generated images
+figma_assets/
+public/images/
