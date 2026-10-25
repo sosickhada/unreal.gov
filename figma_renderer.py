@@ -21,7 +21,7 @@ def make_figma_cover(s, title):
     esc = lambda x: html.escape(str(x or ''))
 
     background = Path("/opt/unreal-github/figma_assets/cover_background.png")
-    logo = Path("/opt/unreal-github/figma_assets/cover_logo_horizontal.png")
+    logo = Path("/opt/unreal-github/figma_assets/cover_logo_exact.svg")
 
     image_path = s.get("background_image")
     if image_path:
@@ -32,7 +32,7 @@ def make_figma_cover(s, title):
     mime = "image/png" if background.suffix.lower() == ".png" else ("image/webp" if background.suffix.lower() == ".webp" else "image/jpeg")
     bg64 = base64.b64encode(background.read_bytes()).decode()
     if not logo.is_file():
-        raise FileNotFoundError("Figma horizontal logo asset missing: " + str(logo))
+        raise FileNotFoundError("Figma logo symbol asset missing: " + str(logo))
     logo64 = base64.b64encode(logo.read_bytes()).decode()
 
     font_dir = Path("/opt/unreal-github/figma_assets/fonts")
@@ -100,19 +100,28 @@ body {{
     pointer-events: none;
 }}
 
-.logo {{
+.logo-symbol {{
     position: absolute;
     left: 64px;
     top: 61px;
-    width: 237px;
-    height: 52px;
+    width: 45.487px;
+    height: 51.744px;
 }}
-.logo img {{
+.logo-symbol img {{
     display: block;
-    width: 237px;
-    height: auto;
-    object-fit: contain;
+    width: 100%;
+    height: 100%;
     filter: none;
+}}
+.logo-text {{
+    position: absolute;
+    left: 124px;
+    top: 78.63px;
+    font-family: 'ROKG', sans-serif;
+    font-size: 24.207px;
+    line-height: normal;
+    color: white;
+    white-space: nowrap;
 }}
 .case-number {{
     position: absolute;
@@ -175,7 +184,7 @@ body {{
 <div class="top-blur"></div>
 <div class="overlay"></div>
 
-<div class="logo"><img src="data:image/png;base64,{logo64}"></div>
+<div class="logo-symbol"><img src="data:image/svg+xml;base64,{logo64}"></div>\n<div class="logo-text">비현실문제해결부</div>
 
 <div class="case-number">사건번호 제 2026-1024호</div>
 <div class="top-line"></div>
