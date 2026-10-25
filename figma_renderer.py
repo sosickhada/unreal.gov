@@ -323,7 +323,7 @@ def make_figma_resolution(s, title):
     )
     markup = markup.replace(
         'left:-496px;top:-90px;width:1977px;height:1483px;',
-        'left:-47px;top:-50px;width:1159px;height:1448px;filter:blur(25px);'
+        'left:-47px;top:-50px;width:1159px;height:1448px;'
     )
     markup = markup.replace(
         'background:linear-gradient(to bottom,transparent,rgba(5,28,61,.46) 38%,rgba(3,18,45,.94) 100%)',
