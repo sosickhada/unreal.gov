@@ -34,6 +34,22 @@ def make_figma_cover(s, title):
     if not logo.is_file():
         raise FileNotFoundError("Figma logo symbol asset missing: " + str(logo))
     logo64 = base64.b64encode(logo.read_bytes()).decode()
+    extra_logo_assets = [
+        ("logo_ellipse10.svg", 61, 66, 51, 51),
+        ("logo_vector7.svg", 92.75, 61.5, 16.049, 13.039),
+        ("logo_vector6.svg", 62.45, 59.47, 14.183, 15.034),
+    ]
+    extra_logo_html = ""
+    for filename, x, y, width, height in extra_logo_assets:
+        asset = logo.parent / filename
+        if not asset.is_file():
+            raise FileNotFoundError("Figma logo layer missing: " + str(asset))
+        encoded = base64.b64encode(asset.read_bytes()).decode()
+        extra_logo_html += (
+            f'<img class="logo-extra" src="data:image/svg+xml;base64,{encoded}" '
+            f'style="left:{x}px;top:{y}px;width:{width}px;height:{height}px">'
+        )
+
 
     font_dir = Path("/opt/unreal-github/figma_assets/fonts")
     rokg64 = base64.b64encode(
@@ -100,6 +116,12 @@ body {{
     pointer-events: none;
 }}
 
+.logo-extra {{
+    position: absolute;
+    display: block;
+    object-fit: fill;
+    filter: none;
+}}
 .logo-symbol {{
     position: absolute;
     left: 64px;
@@ -184,6 +206,7 @@ body {{
 <div class="top-blur"></div>
 <div class="overlay"></div>
 
+{extra_logo_html}
 <div class="logo-symbol"><img src="data:image/svg+xml;base64,{logo64}"></div>\n<div class="logo-text">비현실문제해결부</div>
 
 <div class="case-number">사건번호 제 2026-1024호</div>
