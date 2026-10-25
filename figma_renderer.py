@@ -1,5 +1,6 @@
 from pathlib import Path
 import asyncio, html
+import tempfile
 from playwright.async_api import async_playwright
 WIDTH, HEIGHT = 1080, 1350
 
@@ -156,14 +157,32 @@ body {{
 async def _render(draft, prefix):
     pfx=Path(prefix); pfx.parent.mkdir(parents=True,exist_ok=True); paths=[]
     async with async_playwright() as p:
-        browser=await p.chromium.launch(args=['--no-sandbox','--disable-dev-shm-usage'])
-        page=await browser.new_page(viewport={'width':WIDTH,'height':HEIGHT},device_scale_factor=1)
-        for i,s in enumerate(draft['slides']):
-            await page.set_content((make_figma_cover(s, draft.get('title', '비현실문제해결부')) if i == 0 else make_html(s,i,len(draft['slides']),draft.get('title','비현실문제부 심의 기록'))))
-            path=str(pfx.parent/(pfx.name+f'_{i+1:02d}.png'))
-            await page.evaluate("document.fonts.ready")
-            await page.screenshot(path=path,type='png'); paths.append(path)
-        await browser.close()
+        # Keep the browser profile in RAM to avoid slow disk I/O on the VM.
+        # TemporaryDirectory removes it after rendering (including on errors).
+        with tempfile.TemporaryDirectory(prefix='unreal-render-', dir='/dev/shm') as profile:
+            context = await p.chromium.launch_persistent_context(
+                user_data_dir=profile,
+                headless=True,
+                viewport={'width': WIDTH, 'height': HEIGHT},
+                device_scale_factor=1,
+                timeout=45000,
+                args=['--no-sandbox', '--disable-dev-shm-usage',
+                      '--disable-gpu', '--disable-extensions',
+                      '--disable-background-networking', '--no-first-run'],
+            )
+            try:
+                page = context.pages[0] if context.pages else await context.new_page()
+                for i, slide in enumerate(draft['slides']):
+                    markup = (make_figma_cover(slide, draft.get('title', '비현실문제해결부'))
+                              if i == 0 else make_html(slide, i, len(draft['slides']),
+                                                      draft.get('title', '비현실문제부 심의 기록')))
+                    await page.set_content(markup, wait_until='load', timeout=45000)
+                    await page.evaluate('document.fonts.ready')
+                    path = str(pfx.parent / (pfx.name + f'_{i+1:02d}.png'))
+                    await page.screenshot(path=path, type='png', timeout=45000)
+                    paths.append(path)
+            finally:
+                await context.close()
     return paths
 
 def render_carousel(draft, output_prefix):
