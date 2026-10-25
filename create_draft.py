@@ -46,12 +46,22 @@ def validate_draft(draft):
     if not isinstance(slides, list) or len(slides) != 4:
         raise ValueError("slides는 정확히 4개여야 합니다.")
 
-    for i, slide in enumerate(slides, 1):
+    for i, slide in enumerate(slides[:3], 1):
         if not isinstance(slide, dict):
             raise ValueError(f"{i}장 데이터가 객체가 아닙니다.")
-        for key in ("eyebrow", "headline", "body"):
+        required = ("eyebrow", "headline") if i == 1 else ("eyebrow", "body")
+        for key in required:
             if not isinstance(slide.get(key), str) or not slide[key].strip():
                 raise ValueError(f"{i}장의 {key}가 비어 있습니다.")
+        if i in (2, 3):
+            emphasis = slide.get("emphasis", [])
+            if not isinstance(emphasis, list) or any(
+                not isinstance(item, str) or item not in slide["body"]
+                for item in emphasis
+            ):
+                raise ValueError(f"{i}장의 강조 문구가 본문과 일치하지 않습니다.")
+    if slides[3] != {}:
+        raise ValueError("4장은 고정 엔딩이므로 빈 객체여야 합니다.")
 
 
 def main():
@@ -74,60 +84,37 @@ def main():
 
     prompt = f"""
 너는 인스타그램 풍자 계정 '비현실문제부'의 콘텐츠 작가다.
-
 선택된 사건명: {title}
 
-이 사건명을 소재로 1080x1350 카드뉴스 4장의 원고를 작성하라.
+[정체성]
+- 허구의 행정기관이 일상의 사소한 억울함을 지나치게 진지하게 심의한다.
+- 공문서처럼 정중하고 건조한 문체, 웃기려고 애쓰지 않는 풍자.
+- 실제 정부기관이나 실재 사건으로 오인되지 않게 한다.
+- 사실이 확인되지 않은 뉴스, 통계, 인용문은 만들지 않는다.
 
-[계정 정체성]
-- 허구의 행정기관이 일상의 사소한 억울함을 진지하게 심의한다.
-- 대한민국 정부 공문서처럼 정중하고 건조한 문체.
-- 웃기려고 애쓰지 않는 무표정한 풍자.
-- 현실적인 상황과 공감이 가장 중요하다.
-- 실제 정부기관으로 오인되지 않도록 한다.
+[디자인에 맞는 4장 구성]
+1장: 눈길을 끄는 구체적인 상황의 짧은 후킹 제목. headline이 이미지의 주제목이 된다.
+2장: 사건 경위와 핵심 쟁점을 짧은 본문으로 설명. body가 이미지의 주된 텍스트다.
+3장: 황당하지만 진지한 최종 처분/판정안. body는 2개 문단으로 구성하고, 처분을 한 문장에 명확히 쓴다.
+4장: 고정 엔딩 이미지. AI는 문구를 만들지 않으며 빈 객체로 반환한다.
 
-[카드뉴스 구성]
-1장: 첫 문장부터 공감되는 구체적인 상황과 강한 훅.
-2장: 사건의 전개와 비현실문제부의 접수 내용.
-3장: 현실적인 댓글 반응 2개와 풍자적인 심의 결과.
-4장: 최종 처분, 짧은 여운, 비현실문제부 명칭.
-
-[작성 기준]
-- 제목은 짧고 명확하게.
-- headline은 가급적 2줄 이내.
-- body는 2~4개의 짧은 문장.
-- 댓글 반응은 3장 body 안에 포함.
-- 실제 뉴스나 통계, 출처를 지어내지 말 것.
-- 모든 내용은 가상의 풍자 사례로 작성할 것.
-- 이미지 생성은 하지 말고 텍스트 원고만 작성.
+[작성 규칙]
+- 1장 headline은 짧고 읽기 쉽게, 가급적 2줄 이내.
+- 2장 body는 2~3개의 짧은 문장.
+- 3장 body는 2개 문단, 줄바꿈 2개(\\n\\n)로 구분.
+- 2장과 3장 emphasis는 해당 body 안에 실제로 존재하는 짧은 핵심 구절을 각각 최대 1개 담은 문자열 배열. 없으면 빈 배열.
+- 3장 eyebrow는 '처분/판정안'.
+- 3장에는 댓글 반응을 넣지 않는다. 4장에는 텍스트를 넣지 않는다.
+- JSON 객체만 반환하고 코드블록은 쓰지 않는다.
 
 [반환 형식]
-JSON 객체 하나만 반환한다.
-마크다운 코드블록이나 JSON 외 설명은 넣지 않는다.
-
 {{
   "title": "사건명",
   "slides": [
-    {{
-      "eyebrow": "사건 접수",
-      "headline": "첫 장 제목",
-      "body": "첫 장 본문"
-    }},
-    {{
-      "eyebrow": "사실 관계",
-      "headline": "두 번째 장 제목",
-      "body": "두 번째 장 본문"
-    }},
-    {{
-      "eyebrow": "국민 의견 및 심의",
-      "headline": "세 번째 장 제목",
-      "body": "세 번째 장 본문"
-    }},
-    {{
-      "eyebrow": "최종 처분",
-      "headline": "네 번째 장 제목",
-      "body": "네 번째 장 본문"
-    }}
+    {{"eyebrow": "사건 접수", "headline": "후킹 제목", "body": ""}},
+    {{"eyebrow": "사실 관계", "headline": "핵심 쟁점", "body": "사건 경위와 쟁점", "emphasis": ["본문에 있는 핵심 구절"]}},
+    {{"eyebrow": "처분/판정안", "headline": "최종 판정", "body": "사실관계 판단\\n\\n구체적인 처분", "emphasis": ["본문에 있는 처분 핵심 구절"]}},
+    {{}}
   ]
 }}
 """
@@ -182,8 +169,8 @@ JSON 객체 하나만 반환한다.
     print("SQLite 저장 완료 / 상태: draft_ready")
 
     for i, slide in enumerate(draft["slides"], 1):
-        print(f"\n[{i}장] {slide['headline']}")
-        print(slide["body"])
+        print(f"\n[{i}장] {slide.get('headline', '고정 엔딩')}")
+        print(slide.get("body", ""))
 
     print("\n토큰 사용량:")
     print("입력:", response.usage.input_tokens)
