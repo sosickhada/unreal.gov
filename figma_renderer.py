@@ -41,6 +41,7 @@ def make_fixed_slide(image_path):
 def make_figma_content(s, title):
     """Slide 2: editable text on the original Figma composition."""
     import base64
+    from urllib.parse import quote
     from pathlib import Path
     from html import escape
     import re
@@ -50,22 +51,22 @@ def make_figma_content(s, title):
     if not background.is_file():
         raise FileNotFoundError(f"Slide 2 background missing: {background}")
     mime = "image/png" if background.suffix.lower() == ".png" else "image/jpeg"
-    bg = base64.b64encode(background.read_bytes()).decode()
-    font = base64.b64encode((root / "fonts/ROKG_R.ttf").read_bytes()).decode()
-    logo = base64.b64encode((root / "cover_logo_exact.svg").read_bytes()).decode()
+    bg = background.resolve().as_uri()
+    font = (root / "fonts/ROKG_R.ttf").resolve().as_uri()
+    logo = (root / "cover_logo_exact.svg").resolve().as_uri()
     extras = ""
     for name,x,y,w,h in [
         ("logo_ellipse10.svg",61,66,51,51),
         ("logo_vector7.svg",92.75,61.5,16.049,13.039),
         ("logo_vector6.svg",62.45,59.47,14.183,15.034),
     ]:
-        encoded = base64.b64encode((root/name).read_bytes()).decode()
-        extras += f'<img style="position:absolute;left:{x}px;top:{y}px;width:{w}px;height:{h}px" src="data:image/svg+xml;base64,{encoded}">'
+        encoded = (root/name).resolve().as_uri()
+        extras += f'<img style="position:absolute;left:{x}px;top:{y}px;width:{w}px;height:{h}px" src="{encoded}">'
     candidates = [root/"fonts/ChosunNm.ttf", root/"fonts/ChosunilboNM.ttf", root/"fonts/ChosunilboNM.otf", root/"ChosunilboNM.ttf"]
     chosun = next((f for f in candidates if f.is_file()), None)
     if chosun is None:
         raise FileNotFoundError("ChosunilboNM font missing in figma_assets/fonts")
-    chosun64 = base64.b64encode(chosun.read_bytes()).decode()
+    chosun64 = chosun.resolve().as_uri()
     eyebrow = escape(str(s.get("eyebrow") or "민원 접수 유형"))
     raw = str(s.get("body") or s.get("headline") or "")
     emphasis = s.get("emphasis", [])
@@ -76,9 +77,9 @@ def make_figma_content(s, title):
     case = escape(str(s.get("case_number") or "사건번호 제 2026-1024호"))
     return f"""<!doctype html><html lang="ko"><meta charset="utf-8">
 <style>
-@font-face{{font-family:ROKG;src:url(data:font/ttf;base64,{font})}}\n@font-face{{font-family:ChosunilboNM;src:url(data:font/ttf;base64,{chosun64})}}
+@font-face{{font-family:ROKG;src:url("{font}")}}\n@font-face{{font-family:ChosunilboNM;src:url("{chosun64}")}}
 *{{box-sizing:border-box}}body{{margin:0;width:1080px;height:1350px;overflow:hidden;background:#101923;color:white}}
-.bg{{position:absolute;left:-496px;top:-90px;width:1977px;height:1483px;background:url(data:{mime};base64,{bg}) center/cover no-repeat}}
+.bg{{position:absolute;left:-496px;top:-90px;width:1977px;height:1483px;background:url("{bg}") center/cover no-repeat}}
 .bottom-blur{{position:absolute;left:0;top:560px;width:1080px;height:790px;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);mask-image:linear-gradient(to bottom,transparent,black 80%);-webkit-mask-image:linear-gradient(to bottom,transparent,black 80%)}}\n.shade{{position:absolute;left:0;top:540px;width:1080px;height:810px;background:linear-gradient(to bottom,transparent,rgba(5,28,61,.46) 38%,rgba(3,18,45,.94) 100%)}}
 .line{{position:absolute;left:63px;top:128px;width:947px;height:1px;background:rgba(255,255,255,.8)}}
 .case{{position:absolute;right:65px;top:75px;font:21px/1.4 ROKG;white-space:nowrap}}
@@ -88,7 +89,7 @@ def make_figma_content(s, title):
 .emphasis{{text-decoration:underline;text-decoration-color:white;text-decoration-thickness:5px;text-underline-offset:9px;text-decoration-skip-ink:none}}\n.logo{{position:absolute;left:64px;top:61px;width:45.487px;height:51.744px}}
 .logotext{{position:absolute;left:124px;top:78.63px;font:24.207px ROKG;white-space:nowrap}}
 </style><body><div class="bg"></div><div class="bottom-blur"></div><div class="shade"></div><div class="line"></div>
-{extras}<img class="logo" src="data:image/svg+xml;base64,{logo}"><div class="logotext">비현실문제해결부</div>
+{extras}<img class="logo" src="{logo}"><div class="logotext">비현실문제해결부</div>
 <div class="case">{case}</div><div class="eyebrow">{eyebrow}</div><div class="body">{body}</div></body></html>"""
 
 
