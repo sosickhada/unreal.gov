@@ -86,7 +86,7 @@ def make_figma_content(s, title):
 .eyebrow{{position:absolute;left:102px;top:783px;font:52.953px/1.15 ROKG;letter-spacing:-1.06px}}
 .under{{position:absolute;left:103px;top:939px;width:292px;height:5px;background:white}}
 .body{{position:absolute;left:102px;top:897px;width:874px;font-family:ChosunilboNM,serif;font-size:32.283px;font-weight:400;line-height:1.85;letter-spacing:-.97px;white-space:pre-wrap;word-break:keep-all}}
-.emphasis{{position:relative;white-space:normal}}\n.emphasis::after{{content:"";position:absolute;left:0;right:0;top:calc(50% - 7px);height:14px;background:url("{emphasis_asset}") center/100% 100% no-repeat;pointer-events:none}}\n.logo{{position:absolute;left:64px;top:61px;width:45.487px;height:51.744px}}
+.emphasis{{position:relative;white-space:normal;isolation:isolate}}\n.emphasis::after{{content:"";position:absolute;left:0;right:0;bottom:5px;height:14px;background:url("{emphasis_asset}") center/100% 100% no-repeat;z-index:-1;pointer-events:none}}\n.logo{{position:absolute;left:64px;top:61px;width:45.487px;height:51.744px}}
 .logotext{{position:absolute;left:124px;top:78.63px;font:24.207px ROKG;white-space:nowrap}}
 </style><body><div class="bg"></div><div class="bottom-blur"></div><div class="shade"></div><div class="line"></div>
 {extras}<img class="logo" src="{logo}"><div class="logotext">비현실문제해결부</div>
