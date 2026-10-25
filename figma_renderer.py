@@ -64,6 +64,7 @@ def make_figma_content(s, title):
     if chosun is None:
         raise FileNotFoundError("ChosunilboNM font missing in figma_assets/fonts")
     chosun64 = chosun.resolve().as_uri()
+    emphasis_asset = (root / "content_emphasis.svg").resolve().as_uri()
     eyebrow = escape(str(s.get("eyebrow") or "민원 접수 유형"))
     raw = str(s.get("body") or s.get("headline") or "")
     emphasis = s.get("emphasis", [])
@@ -71,6 +72,8 @@ def make_figma_content(s, title):
     terms = sorted({str(t) for t in emphasis if t and str(t) in raw}, key=len, reverse=True)
     parts = re.split("(" + "|".join(re.escape(t) for t in terms) + ")", raw) if terms else [raw]
     body = "".join('<span class="emphasis">' + escape(t) + '</span>' if t in terms else escape(t) for t in parts)
+    if not (root / "content_emphasis.svg").is_file():
+        raise FileNotFoundError("Figma emphasis SVG missing: figma_assets/content_emphasis.svg")
     case = escape(str(s.get("case_number") or "사건번호 제 2026-1024호"))
     return f"""<!doctype html><html lang="ko"><meta charset="utf-8">
 <style>
@@ -82,8 +85,8 @@ def make_figma_content(s, title):
 .case{{position:absolute;right:65px;top:75px;font:21px/1.4 ROKG;white-space:nowrap}}
 .eyebrow{{position:absolute;left:102px;top:783px;font:52.953px/1.15 ROKG;letter-spacing:-1.06px}}
 .under{{position:absolute;left:103px;top:939px;width:292px;height:5px;background:white}}
-.body{{position:absolute;left:102px;top:897px;width:874px;font:32.283px/1.85 ChosunilboNM,serif;letter-spacing:-.97px;white-space:pre-wrap;word-break:keep-all}}
-.emphasis{{position:relative;white-space:normal}}\n.emphasis::after{{content:"";position:absolute;left:0;right:0;top:52%;height:0;border-top:5px solid rgba(255,255,255,.95);transform:rotate(-1deg);pointer-events:none}}\n.logo{{position:absolute;left:64px;top:61px;width:45.487px;height:51.744px}}
+.body{{position:absolute;left:102px;top:897px;width:874px;font-family:ChosunilboNM,serif;font-size:32.283px;font-weight:400;line-height:1.85;letter-spacing:-.97px;white-space:pre-wrap;word-break:keep-all}}
+.emphasis{{position:relative;white-space:normal}}\n.emphasis::after{{content:"";position:absolute;left:0;right:0;top:calc(50% - 7px);height:14px;background:url("{emphasis_asset}") center/100% 100% no-repeat;pointer-events:none}}\n.logo{{position:absolute;left:64px;top:61px;width:45.487px;height:51.744px}}
 .logotext{{position:absolute;left:124px;top:78.63px;font:24.207px ROKG;white-space:nowrap}}
 </style><body><div class="bg"></div><div class="bottom-blur"></div><div class="shade"></div><div class="line"></div>
 {extras}<img class="logo" src="{logo}"><div class="logotext">비현실문제해결부</div>
