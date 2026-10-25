@@ -61,7 +61,7 @@ def make_figma_content(s, title):
     ]:
         encoded = base64.b64encode((root/name).read_bytes()).decode()
         extras += f'<img style="position:absolute;left:{x}px;top:{y}px;width:{w}px;height:{h}px" src="data:image/svg+xml;base64,{encoded}">'
-    candidates = [root/"fonts/ChosunilboNM.ttf", root/"fonts/ChosunilboNM.otf", root/"ChosunilboNM.ttf"]
+    candidates = [root/"fonts/ChosunNm.ttf", root/"fonts/ChosunilboNM.ttf", root/"fonts/ChosunilboNM.otf", root/"ChosunilboNM.ttf"]
     chosun = next((f for f in candidates if f.is_file()), None)
     if chosun is None:
         raise FileNotFoundError("ChosunilboNM font missing in figma_assets/fonts")
