@@ -43,6 +43,7 @@ def make_figma_content(s, title):
     import base64
     from pathlib import Path
     from html import escape
+    import re
     root = Path("/opt/unreal-github/figma_assets")
     image_path = s.get("background_image") or str(root / "content_background.png")
     background = Path(image_path)
@@ -60,25 +61,35 @@ def make_figma_content(s, title):
     ]:
         encoded = base64.b64encode((root/name).read_bytes()).decode()
         extras += f'<img style="position:absolute;left:{x}px;top:{y}px;width:{w}px;height:{h}px" src="data:image/svg+xml;base64,{encoded}">'
+    candidates = [root/"fonts/ChosunilboNM.ttf", root/"fonts/ChosunilboNM.otf", root/"ChosunilboNM.ttf"]
+    chosun = next((f for f in candidates if f.is_file()), None)
+    if chosun is None:
+        raise FileNotFoundError("ChosunilboNM font missing in figma_assets/fonts")
+    chosun64 = base64.b64encode(chosun.read_bytes()).decode()
     eyebrow = escape(str(s.get("eyebrow") or "민원 접수 유형"))
-    body = escape(str(s.get("body") or s.get("headline") or "")).replace("\\n","<br>")
+    raw = str(s.get("body") or s.get("headline") or "")
+    emphasis = s.get("emphasis", [])
+    if isinstance(emphasis, str): emphasis = [emphasis]
+    terms = sorted({str(t) for t in emphasis if t and str(t) in raw}, key=len, reverse=True)
+    parts = re.split("(" + "|".join(re.escape(t) for t in terms) + ")", raw) if terms else [raw]
+    body = "".join('<span class="emphasis">' + escape(t) + '</span>' if t in terms else escape(t) for t in parts)
     case = escape(str(s.get("case_number") or "사건번호 제 2026-1024호"))
     return f"""<!doctype html><html lang="ko"><meta charset="utf-8">
 <style>
-@font-face{{font-family:ROKG;src:url(data:font/ttf;base64,{font})}}
+@font-face{{font-family:ROKG;src:url(data:font/ttf;base64,{font})}}\n@font-face{{font-family:ChosunilboNM;src:url(data:font/ttf;base64,{chosun64})}}
 *{{box-sizing:border-box}}body{{margin:0;width:1080px;height:1350px;overflow:hidden;background:#101923;color:white}}
 .bg{{position:absolute;left:-496px;top:-90px;width:1977px;height:1483px;background:url(data:{mime};base64,{bg}) center/cover no-repeat}}
-.shade{{position:absolute;left:0;top:584px;width:1080px;height:766px;background:linear-gradient(to bottom,transparent,rgba(0,0,0,.5))}}
+.bottom-blur{{position:absolute;left:0;top:560px;width:1080px;height:790px;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);mask-image:linear-gradient(to bottom,transparent,black 80%);-webkit-mask-image:linear-gradient(to bottom,transparent,black 80%)}}\n.shade{{position:absolute;left:0;top:540px;width:1080px;height:810px;background:linear-gradient(to bottom,transparent,rgba(5,28,61,.46) 38%,rgba(3,18,45,.94) 100%)}}
 .line{{position:absolute;left:63px;top:128px;width:947px;height:1px;background:rgba(255,255,255,.8)}}
 .case{{position:absolute;right:65px;top:75px;font:21px/1.4 ROKG;white-space:nowrap}}
 .eyebrow{{position:absolute;left:102px;top:783px;font:52.953px/1.15 ROKG;letter-spacing:-1.06px}}
 .under{{position:absolute;left:103px;top:939px;width:292px;height:5px;background:white}}
-.body{{position:absolute;left:102px;top:897px;width:874px;font:32.283px/1.85 'ChosunilboNM','Noto Serif KR',serif;letter-spacing:-.97px;white-space:pre-wrap;word-break:keep-all}}
-.logo{{position:absolute;left:64px;top:61px;width:45.487px;height:51.744px}}
+.body{{position:absolute;left:102px;top:897px;width:874px;font:32.283px/1.85 ChosunilboNM,serif;letter-spacing:-.97px;white-space:pre-wrap;word-break:keep-all}}
+.emphasis{{text-decoration:underline;text-decoration-color:white;text-decoration-thickness:5px;text-underline-offset:9px;text-decoration-skip-ink:none}}\n.logo{{position:absolute;left:64px;top:61px;width:45.487px;height:51.744px}}
 .logotext{{position:absolute;left:124px;top:78.63px;font:24.207px ROKG;white-space:nowrap}}
-</style><body><div class="bg"></div><div class="shade"></div><div class="line"></div>
+</style><body><div class="bg"></div><div class="bottom-blur"></div><div class="shade"></div><div class="line"></div>
 {extras}<img class="logo" src="data:image/svg+xml;base64,{logo}"><div class="logotext">비현실문제해결부</div>
-<div class="case">{case}</div><div class="eyebrow">{eyebrow}</div><div class="under"></div><div class="body">{body}</div></body></html>"""
+<div class="case">{case}</div><div class="eyebrow">{eyebrow}</div><div class="body">{body}</div></body></html>"""
 
 
 def make_figma_cover(s, title):
