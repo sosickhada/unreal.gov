@@ -327,7 +327,7 @@ def make_figma_resolution(s, title):
     )
     markup = markup.replace(
         'background:linear-gradient(to bottom,transparent,rgba(5,28,61,.46) 38%,rgba(3,18,45,.94) 100%)',
-        'background:linear-gradient(to bottom,transparent,rgba(0,0,0,.18) 38%,rgba(0,0,0,.72) 100%)'
+        'background:linear-gradient(to bottom,transparent,rgba(5,25,52,.20) 38%,rgba(4,22,51,.82) 100%)'
     )
     return markup
 
