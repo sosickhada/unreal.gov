@@ -338,17 +338,17 @@ def expand_slides(draft):
         raise ValueError("Expected four source slides before expansion")
     cover, content, verdict, ending = slides
     body = str(verdict.get("body") or "")
-    paragraphs = [p.strip() for p in body.split("\\n\\n") if p.strip()]
+    paragraphs = [p.strip() for p in body.split("\n\n") if p.strip()]
     # Keep short verdicts as a single approved Figma page.
-    if len(body) <= 190:
+    if len(body) <= 190 and len(paragraphs) < 2:
         return [("cover", cover), ("content", content),
                 ("resolution_final", verdict), ("ending", ending)]
     # Reserve the last paragraph (the actual decision) for the original final page.
     if len(paragraphs) < 2:
-        sentences = __import__("re").split(r"(?<=[.!?。])\\s+", body)
+        sentences = __import__("re").split(r"(?<=[.!?。])\s+", body)
         midpoint = max(1, len(sentences) // 2)
         paragraphs = [" ".join(sentences[:midpoint]), " ".join(sentences[midpoint:])]
-    leading, final = "\\n\\n".join(paragraphs[:-1]), paragraphs[-1]
+    leading, final = "\n\n".join(paragraphs[:-1]), paragraphs[-1]
     if not leading or not final:
         return [("cover", cover), ("content", content),
                 ("resolution_final", verdict), ("ending", ending)]
