@@ -23,6 +23,13 @@ def make_figma_cover(s, title):
     background = Path("/opt/unreal-github/figma_assets/cover_background.png")
     logo = Path("/opt/unreal-github/figma_assets/logo_symbol.svg")
 
+    image_path = s.get("background_image")
+    if image_path:
+        candidate = Path(image_path).expanduser().resolve()
+        if not candidate.is_file() or candidate.suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp"):
+            raise ValueError("background_image must point to a PNG, JPG, or WebP file")
+        background = candidate
+    mime = "image/png" if background.suffix.lower() == ".png" else ("image/webp" if background.suffix.lower() == ".webp" else "image/jpeg")
     bg64 = base64.b64encode(background.read_bytes()).decode()
     logo64 = base64.b64encode(logo.read_bytes()).decode()
 
@@ -62,11 +69,11 @@ body {{
 
 .background {{
     position: absolute;
-    inset: -80px;
-    background-image: url('data:image/png;base64,{bg64}');
+    inset: -5px;
+    background-image: url('data:{mime};base64,{bg64}');
     background-position: center;
     background-size: cover;
-    filter: blur(25px);
+    filter: blur(2px);
 }}
 
 .overlay {{
@@ -74,9 +81,9 @@ body {{
     inset: 0;
     background: linear-gradient(
         180deg,
-        rgba(0,0,0,.18) 0%,
-        rgba(0,0,0,.36) 40%,
-        rgba(0,0,0,.55) 100%
+        rgba(5,17,33,.28) 0%,
+        rgba(6,20,40,.48) 40%,
+        rgba(4,14,30,.66) 100%
     );
 }}
 
@@ -87,16 +94,23 @@ body {{
     display: flex;
     align-items: center;
     gap: 15px;
+    height: 52px;
 }}
 
 .logo img {{
     width: 46px;
     height: 52px;
+    background: white;
+    border-radius: 2px;
+    padding: 3px;
+    object-fit: contain;
 }}
 
 .logo span {{
     font-size: 24px;
     font-weight: 600;
+    line-height: 52px;
+    white-space: nowrap;
 }}
 
 .case-number {{
@@ -125,10 +139,19 @@ body {{
     word-break: keep-all;
 }}
 
+.quote-mark {{
+    position: absolute;
+    left: 60px;
+    top: 298px;
+    font-size: 88px;
+    line-height: 1;
+    color: rgba(255,255,255,.9);
+    font-family: Georgia, serif;
+}}
 .headline {{
     position: absolute;
     left: 63px;
-    top: 329px;
+    top: 395px;
     width: 947px;
     font-size: 76px;
     line-height: 1.3;
@@ -150,6 +173,7 @@ body {{
 <div class="top-line"></div>
 
 <div class="eyebrow">{eyebrow}</div>
+<div class="quote-mark">“</div>
 <div class="headline">{headline}</div>
 </body>
 </html>"""
