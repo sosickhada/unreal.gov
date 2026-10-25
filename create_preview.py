@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 
 import requests
-from renderer import render_carousel
+from figma_renderer import render_carousel
 
 ENV_PATH = Path("/opt/unreal.gov/.env")
 DB_PATH = Path("/opt/unreal-github/unreal_bot.db")
