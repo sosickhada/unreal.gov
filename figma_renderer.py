@@ -73,7 +73,7 @@ body {{
     background-image: url('data:{mime};base64,{bg64}');
     background-position: center;
     background-size: cover;
-    filter: blur(2px);
+    filter: none;
 }}
 
 .overlay {{
@@ -81,10 +81,21 @@ body {{
     inset: 0;
     background: linear-gradient(
         180deg,
-        rgba(5,17,33,.28) 0%,
-        rgba(6,20,40,.48) 40%,
-        rgba(4,14,30,.66) 100%
+        rgba(3,13,29,.92) 0%,
+        rgba(4,17,36,.82) 24%,
+        rgba(5,19,38,.42) 47%,
+        rgba(4,15,31,.08) 75%,
+        rgba(4,15,31,.04) 100%
     );
+}}
+.top-blur {{
+    position: absolute;
+    inset: 0;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    mask-image: linear-gradient(to bottom, black 0%, black 14%, transparent 49%);
+    -webkit-mask-image: linear-gradient(to bottom, black 0%, black 14%, transparent 49%);
+    pointer-events: none;
 }}
 
 .logo {{
@@ -100,17 +111,19 @@ body {{
 .logo img {{
     width: 46px;
     height: 52px;
-    background: white;
-    border-radius: 2px;
-    padding: 3px;
     object-fit: contain;
+    filter: drop-shadow(0 0 1px rgba(255,255,255,.95))
+            drop-shadow(0 0 2px rgba(255,255,255,.7));
 }}
 
 .logo span {{
     font-size: 24px;
     font-weight: 600;
-    line-height: 52px;
+    line-height: 1;
     white-space: nowrap;
+    display: flex;
+    align-items: center;
+    height: 52px;
 }}
 
 .case-number {{
@@ -139,29 +152,32 @@ body {{
     word-break: keep-all;
 }}
 
-.quote-mark {{
-    position: absolute;
-    left: 60px;
-    top: 298px;
-    font-size: 88px;
-    line-height: 1;
-    color: rgba(255,255,255,.9);
-    font-family: Georgia, serif;
-}}
 .headline {{
     position: absolute;
     left: 63px;
-    top: 395px;
+    top: 329px;
     width: 947px;
     font-size: 76px;
     line-height: 1.3;
     letter-spacing: -2px;
     word-break: keep-all;
 }}
+.quote {{
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 100px;
+    font-weight: 700;
+    line-height: 0;
+    vertical-align: -0.16em;
+    color: #fff;
+    letter-spacing: -6px;
+}}
+.quote.open {{ margin-right: 6px; }}
+.quote.close {{ margin-left: 6px; }}
 </style>
 </head>
 <body>
 <div class="background"></div>
+<div class="top-blur"></div>
 <div class="overlay"></div>
 
 <div class="logo">
@@ -173,8 +189,7 @@ body {{
 <div class="top-line"></div>
 
 <div class="eyebrow">{eyebrow}</div>
-<div class="quote-mark">“</div>
-<div class="headline">{headline}</div>
+<div class="headline"><span class="quote open">“</span>{headline}<span class="quote close">”</span></div>
 </body>
 </html>"""
 
