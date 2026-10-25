@@ -28,7 +28,7 @@ def choose_pixabay_photos(draft, env):
     reply = ai.messages.create(model=model, max_tokens=450, messages=[{'role':'user','content':
         'For each Korean satirical carousel scene, give TWO concise English Pixabay PHOTO search queries. '
         'Focus on concrete visible subject and action, NOT abstract concepts. '
-        'Favor dark moody cinematic low-key settings but prioritize scene relevance. '
+        'CRITICAL: no visible human faces; prefer empty locations, rear-view people, silhouettes, hands-only closeups, and over-the-shoulder views. Favor dark moody cinematic low-key settings but prioritize scene relevance. '
         'Return only a JSON array of arrays, two search phrases per scene, same order. '
         'No personal names, brand names or specific real persons. Scenes: ' + json.dumps(contexts, ensure_ascii=False)}])
     raw = ''.join(b.text for b in reply.content if b.type == 'text').strip()
@@ -58,6 +58,16 @@ def choose_pixabay_photos(draft, env):
                         candidates.append((rank, photo, query))
                 if candidates:
                     break
+        # Conservative metadata screening; this is not a visual face detector.
+        # Require a separate visual review before publishing.
+        face_terms = re.compile(
+            r'\b(portrait|headshot|selfie|face|facial|smile|smiling|'
+            r'eye contact|looking at camera|front view|beauty|makeup)\b', re.I
+        )
+        candidates = [
+            (rank, photo, query) for rank, photo, query in candidates
+            if not face_terms.search(str(photo.get('tags', '')))
+        ]
         scored = []
         for rank, photo, query in candidates[:35]:
             try:
