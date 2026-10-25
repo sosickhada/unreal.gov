@@ -387,7 +387,7 @@ async def _render(draft, prefix):
                     elif kind == "resolution_extra":
                         # Same verdict typography, with a replaceable content image.
                         extra = dict(slide)
-                        extra.setdefault("background_image", str(Path("/opt/unreal-github/figma_assets/content_background.png")))
+                        extra.setdefault("background_image", str(Path("/opt/unreal-github/figma_assets/resolution_background.png")))
                         markup = make_figma_resolution(extra, title, extra_background=True)
                     elif kind == "resolution_final":
                         markup = make_figma_resolution(slide, title)
