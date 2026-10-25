@@ -327,7 +327,21 @@ async def _render(draft, prefix):
                         make_html(slide, i, len(draft['slides']),
                                   draft.get('title', '비현실문제부 심의 기록'))
                     )
-                    await page.set_content(markup, wait_until='load', timeout=45000)
+                    if i == 1:
+                        # file:// HTML can load adjacent local image/font assets.
+                        # about:blank + set_content cannot reliably load file:// URLs.
+                        with tempfile.NamedTemporaryFile(
+                            mode='w', suffix='.html', encoding='utf-8',
+                            dir='/opt/unreal-github/figma_assets', delete=False
+                        ) as temp_html:
+                            temp_html.write(markup)
+                            html_path = Path(temp_html.name)
+                        try:
+                            await page.goto(html_path.as_uri(), wait_until='load', timeout=45000)
+                        finally:
+                            html_path.unlink(missing_ok=True)
+                    else:
+                        await page.set_content(markup, wait_until='load', timeout=45000)
                     await page.evaluate('document.fonts.ready')
                     path = str(pfx.parent / (pfx.name + f'_{i+1:02d}.png'))
                     await page.screenshot(path=path, type='png', timeout=45000)
