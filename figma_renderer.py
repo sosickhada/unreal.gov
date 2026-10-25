@@ -21,7 +21,7 @@ def make_figma_cover(s, title):
     esc = lambda x: html.escape(str(x or ''))
 
     background = Path("/opt/unreal-github/figma_assets/cover_background.png")
-    logo = Path("/opt/unreal-github/figma_assets/logo_symbol.svg")
+    logo = Path("/opt/unreal-github/figma_assets/cover_logo_exact.svg")
 
     image_path = s.get("background_image")
     if image_path:
@@ -31,6 +31,8 @@ def make_figma_cover(s, title):
         background = candidate
     mime = "image/png" if background.suffix.lower() == ".png" else ("image/webp" if background.suffix.lower() == ".webp" else "image/jpeg")
     bg64 = base64.b64encode(background.read_bytes()).decode()
+    if not logo.is_file():
+        raise FileNotFoundError("Figma cover logo asset missing: " + str(logo))
     logo64 = base64.b64encode(logo.read_bytes()).decode()
 
     font_dir = Path("/opt/unreal-github/figma_assets/fonts")
@@ -112,8 +114,7 @@ body {{
     width: 46px;
     height: 52px;
     object-fit: contain;
-    filter: drop-shadow(0 0 1px rgba(255,255,255,.95))
-            drop-shadow(0 0 2px rgba(255,255,255,.7));
+    filter: none;
 }}
 
 .logo span {{
@@ -163,16 +164,30 @@ body {{
     word-break: keep-all;
 }}
 .quote {{
-    font-family: Georgia, 'Times New Roman', serif;
-    font-size: 100px;
-    font-weight: 700;
-    line-height: 0;
-    vertical-align: -0.16em;
-    color: #fff;
-    letter-spacing: -6px;
+    position: absolute;
+    width: 188px;
+    height: 208.563px;
+    font-family: 'ROKG', sans-serif;
+    font-size: 376px;
+    line-height: 1.4;
+    color: rgba(255,255,255,.20);
+    pointer-events: none;
+    z-index: 2;
+    white-space: nowrap;
 }}
-.quote.open {{ margin-right: 6px; }}
-.quote.close {{ margin-left: 6px; }}
+.quote.open {{
+    left: 17px;
+    top: 226px;
+    text-align: right;
+}}
+.quote.close {{
+    left: 681px;
+    top: 609.5625px;
+    text-align: right;
+    transform: rotate(180deg);
+    transform-origin: center center;
+}}
+.headline {{ z-index: 3; }}
 </style>
 </head>
 <body>
@@ -189,7 +204,9 @@ body {{
 <div class="top-line"></div>
 
 <div class="eyebrow">{eyebrow}</div>
-<div class="headline"><span class="quote open">“</span>{headline}<span class="quote close">”</span></div>
+<div class="quote open">“</div>
+<div class="quote close">“</div>
+<div class="headline">{headline}</div>
 </body>
 </html>"""
 
