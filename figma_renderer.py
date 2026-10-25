@@ -13,6 +13,31 @@ def make_html(s, i, n, title):
 </style><body><main class="page"><div class="top"><span>비현실문제부 / NONSENSE AFFAIRS</span><span class="seal">비</span></div><section class="content"><div class="eyebrow">'''+esc(s.get('eyebrow','비현실문제부 · 심의 기록'))+'''</div><h1>'''+headline+'''</h1><div class="rule"></div><div class="body">'''+body+'''</div>'''+('<div class="case">'+esc(title)+'</div>' if i==0 else '')+'''</section><div class="bottom"><span>본 콘텐츠는 풍자 목적의 창작물입니다.</span><span>'''+f'{i+1:02d} / {n:02d}'+'''</span></div></main></body></html>'''
 
 
+# Fixed slides use a single approved image each. Never replace these with
+# search results or AI-generated imagery.
+FIXED_SLIDE_IMAGES = {
+    2: Path("/opt/unreal-github/figma_assets/resolution_fixed.png"),
+    3: Path("/opt/unreal-github/figma_assets/ending_fixed.png"),
+}
+
+
+def make_fixed_slide(image_path):
+    import base64
+    if not image_path.is_file():
+        raise FileNotFoundError(
+            f"Fixed Figma slide asset missing: {image_path}. "
+            "Export the approved Figma frame to this path before rendering."
+        )
+    encoded = base64.b64encode(image_path.read_bytes()).decode("ascii")
+    return (
+        '<!doctype html><html lang="ko"><meta charset="utf-8">'
+        '<style>*{box-sizing:border-box}html,body{margin:0;width:1080px;'
+        'height:1350px;overflow:hidden;background:#061225}'
+        'img{display:block;width:1080px;height:1350px;object-fit:fill}</style>'
+        f'<img src="data:image/png;base64,{encoded}"></html>'
+    )
+
+
 def make_figma_cover(s, title):
     from pathlib import Path
     import base64
@@ -237,9 +262,14 @@ async def _render(draft, prefix):
             try:
                 page = context.pages[0] if context.pages else await context.new_page()
                 for i, slide in enumerate(draft['slides']):
-                    markup = (make_figma_cover(slide, draft.get('title', '비현실문제해결부'))
-                              if i == 0 else make_html(slide, i, len(draft['slides']),
-                                                      draft.get('title', '비현실문제부 심의 기록')))
+                    markup = (
+                        make_figma_cover(slide, draft.get('title', '비현실문제해결부'))
+                        if i == 0 else
+                        make_fixed_slide(FIXED_SLIDE_IMAGES[i])
+                        if i in FIXED_SLIDE_IMAGES else
+                        make_html(slide, i, len(draft['slides']),
+                                  draft.get('title', '비현실문제부 심의 기록'))
+                    )
                     await page.set_content(markup, wait_until='load', timeout=45000)
                     await page.evaluate('document.fonts.ready')
                     path = str(pfx.parent / (pfx.name + f'_{i+1:02d}.png'))
