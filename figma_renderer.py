@@ -59,10 +59,10 @@ def make_figma_content(s, title):
     ]:
         encoded = (root/name).resolve().as_uri()
         extras += f'<img style="position:absolute;left:{x}px;top:{y}px;width:{w}px;height:{h}px" src="{encoded}">'
-    candidates = [root/"fonts/ChosunNm.ttf", root/"fonts/ChosunilboNM.ttf", root/"fonts/ChosunilboNM.otf", root/"ChosunilboNM.ttf"]
+    candidates = [root/"fonts/ChosunNm-full-fixed.ttf"]
     chosun = next((f for f in candidates if f.is_file()), None)
     if chosun is None:
-        raise FileNotFoundError("ChosunilboNM font missing in figma_assets/fonts")
+        raise FileNotFoundError("Chromium-compatible ChosunNm-full-fixed.ttf missing in figma_assets/fonts")
     chosun64 = chosun.resolve().as_uri()
     emphasis_asset = (root / "content_emphasis.svg").resolve().as_uri()
     eyebrow = escape(str(s.get("eyebrow") or "민원 접수 유형"))
