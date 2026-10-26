@@ -4,6 +4,9 @@
 텔레그램 인라인 버튼의 선택을 실시간으로 처리하려면 별도의 상시 실행 리스너가 필요합니다.
 """
 import os
+
+# Emergency pause: do not call external APIs or send Telegram messages.
+AUTOMATION_PAUSED = True
 import datetime as dt
 import email.utils
 import logging
@@ -160,6 +163,9 @@ def generate_selected_topic(client, choice_number: str) -> str:
 
 
 def main():
+    if AUTOMATION_PAUSED:
+        logging.info("비현실문제부 자동 후보 생성 일시 중지: API 호출 및 텔레그램 전송 없음")
+        return
     logging.info("비현실문제부 콘텐츠 봇 시작 (mode=%s, model=%s)", ACTION_TYPE, CLAUDE_MODEL)
 
     if ACTION_TYPE in ("", "generate_trends"):
