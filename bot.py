@@ -138,7 +138,6 @@ def generate_trends(client) -> str:
     response = client.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=3000,
-        temperature=0.7,
         messages=[{"role": "user", "content": prompt}],
     )
     text = "\n".join(
