@@ -6,7 +6,7 @@
 import os
 
 # Emergency pause: do not call external APIs or send Telegram messages.
-AUTOMATION_PAUSED = True
+AUTOMATION_PAUSED = False
 import datetime as dt
 import email.utils
 import logging
