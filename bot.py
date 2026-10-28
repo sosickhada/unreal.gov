@@ -6,7 +6,7 @@
 import os
 
 # Emergency pause: do not call external APIs or send Telegram messages.
-AUTOMATION_PAUSED = True
+AUTOMATION_PAUSED = False
 import datetime as dt
 import email.utils
 import logging
@@ -141,7 +141,6 @@ def generate_trends(client) -> str:
     response = client.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=3000,
-        temperature=0.7,
         messages=[{"role": "user", "content": prompt}],
     )
     text = "\n".join(
