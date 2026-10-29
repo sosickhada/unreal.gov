@@ -1,0 +1,17 @@
+name: Unreal Bureau VM manual enqueue
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: unreal-bureau-vm-enqueue
+  cancel-in-progress: false
+jobs:
+  enqueue:
+    # A dedicated self-hosted runner ON THE VM shares its SQLite idempotency keys.
+    # Never register a public/untrusted repository runner with production access.
+    runs-on: [self-hosted, unreal-bureau]
+    timeout-minutes: 2
+    steps:
+      - name: Enqueue using the deployed checkout (no paid calls in this job)
+        run: /opt/unreal-github/.venv/bin/python /opt/unreal-github/bot.py

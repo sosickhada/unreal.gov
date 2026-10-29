@@ -1,0 +1,35 @@
+[Unit]
+Description=Unreal Bureau durable content worker
+After=network-online.target unreal-images.service
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+StandardOutput=journal
+StandardError=journal
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=100
+Type=simple
+User=dbsdudtn7612
+WorkingDirectory=/opt/unreal-github
+EnvironmentFile=/opt/unreal.gov/.env
+ExecStart=/opt/unreal-github/.venv/bin/python -m bureau.cli worker
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=210
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/unreal-github /opt/unreal.gov/public/images
+MemoryHigh=450M
+MemoryMax=600M
+MemorySwapMax=256M
+CPUQuota=100%
+Nice=5
+TasksMax=128
+
+[Install]
+WantedBy=multi-user.target

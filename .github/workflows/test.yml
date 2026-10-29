@@ -1,0 +1,25 @@
+name: Offline unit and mocked integration tests
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'bureau/**'
+      - 'tests/**'
+      - 'figma_renderer.py'
+      - 'requirements.txt'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r requirements.txt
+      - run: python -m unittest discover -s tests -v
+        env:
+          ENABLE_EXTERNAL_CALLS: '0'
+          INSTAGRAM_PUBLISH_ENABLED: '0'

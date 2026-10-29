@@ -24,3 +24,6 @@ output/
 # Local assets and generated images
 figma_assets/
 public/images/
+
+# Safe template is intentionally versionable
+!.env.example

@@ -1,0 +1,23 @@
+[Unit]
+Description=Unreal Bureau daily candidate enqueue (no external API)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+StandardOutput=journal
+StandardError=journal
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=100
+Type=oneshot
+User=dbsdudtn7612
+WorkingDirectory=/opt/unreal-github
+EnvironmentFile=/opt/unreal.gov/.env
+ExecStart=/opt/unreal-github/.venv/bin/python /opt/unreal-github/bot.py
+TimeoutStartSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/unreal-github

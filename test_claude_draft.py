@@ -57,6 +57,8 @@ def validate_draft(draft):
 
 
 def main():
+    from bureau.config import Config
+    Config.load().require_external()
     env = load_env()
     api_key = env.get("ANTHROPIC_API_KEY")
     if not api_key:

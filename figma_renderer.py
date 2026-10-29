@@ -1,8 +1,25 @@
 from pathlib import Path
 import asyncio, html
 import tempfile
+import os
 from playwright.async_api import async_playwright
 WIDTH, HEIGHT = 1080, 1350
+
+
+def validate_fonts(draft):
+    """Validate glyph coverage, not just a CSS fallback success."""
+    from fontTools.ttLib import TTFont
+    root = Path('/opt/unreal-github/figma_assets/fonts')
+    for filename, values in [
+        ('ROKG_R.ttf', [s.get(k, '') for s in draft['slides'][:3] for k in ('headline', 'eyebrow')]),
+        ('ChosunNm-full-fixed.ttf', [s.get('body', '') for s in draft['slides'][1:3]]),
+    ]:
+        with TTFont(root / filename) as font:
+            supported = set((font.getBestCmap() or {}).keys())
+        missing = {ord(ch) for value in values for ch in value if 0xAC00 <= ord(ch) <= 0xD7A3 and ord(ch) not in supported}
+        if missing:
+            raise ValueError(f'Korean glyphs missing from {filename}: {len(missing)}')
+
 
 def make_html(s, i, n, title):
     esc=lambda x: html.escape(str(x or ''))
@@ -20,24 +37,25 @@ FIXED_SLIDE_IMAGES = {
 }
 
 
-def make_fixed_slide(image_path):
+def make_fixed_slide(image_path, inline_assets=True):
     import base64
     if not image_path.is_file():
         raise FileNotFoundError(
             f"Fixed Figma slide asset missing: {image_path}. "
             "Export the approved Figma frame to this path before rendering."
         )
-    encoded = base64.b64encode(image_path.read_bytes()).decode("ascii")
+    encoded = base64.b64encode(image_path.read_bytes()).decode("ascii") if inline_assets else ""
+    image_url = f"data:image/png;base64,{encoded}" if inline_assets else image_path.resolve().as_uri()
     return (
         '<!doctype html><html lang="ko"><meta charset="utf-8">'
         '<style>*{box-sizing:border-box}html,body{margin:0;width:1080px;'
         'height:1350px;overflow:hidden;background:#061225}'
         'img{display:block;width:1080px;height:1350px;object-fit:fill}</style>'
-        f'<img src="data:image/png;base64,{encoded}"></html>'
+        f'<img src="{image_url}"></html>'
     )
 
 
-def make_figma_content(s, title):
+def make_figma_content(s, title, fonts=None):
     """Slide 2: editable text on the original Figma composition."""
     from pathlib import Path
     from html import escape
@@ -48,7 +66,7 @@ def make_figma_content(s, title):
     if not background.is_file():
         raise FileNotFoundError(f"Slide 2 background missing: {background}")
     bg = background.resolve().as_uri()
-    font = (root / "fonts/ROKG_R.ttf").resolve().as_uri()
+    font = Path((fonts or {}).get("ROKG_R.ttf", root / "fonts/ROKG_R.ttf")).resolve().as_uri()
     logo = (root / "cover_logo_exact.svg").resolve().as_uri()
     extras = ""
     for name,x,y,w,h in [
@@ -58,7 +76,7 @@ def make_figma_content(s, title):
     ]:
         encoded = (root/name).resolve().as_uri()
         extras += f'<img style="position:absolute;left:{x}px;top:{y}px;width:{w}px;height:{h}px" src="{encoded}">'
-    candidates = [root/"fonts/ChosunNm-full-fixed.ttf"]
+    candidates = [Path((fonts or {}).get("ChosunNm-full-fixed.ttf", root/"fonts/ChosunNm-full-fixed.ttf"))]
     chosun = next((f for f in candidates if f.is_file()), None)
     if chosun is None:
         raise FileNotFoundError("Chromium-compatible ChosunNm-full-fixed.ttf missing in figma_assets/fonts")
@@ -92,7 +110,7 @@ def make_figma_content(s, title):
 <div class="case">{case}</div><div class="eyebrow">{eyebrow}</div><div class="body">{body}</div></body></html>"""
 
 
-def make_figma_cover(s, title):
+def make_figma_cover(s, title, fonts=None, inline_assets=True):
     from pathlib import Path
     import base64
     import html
@@ -109,10 +127,12 @@ def make_figma_cover(s, title):
             raise ValueError("background_image must point to a PNG, JPG, or WebP file")
         background = candidate
     mime = "image/png" if background.suffix.lower() == ".png" else ("image/webp" if background.suffix.lower() == ".webp" else "image/jpeg")
-    bg64 = base64.b64encode(background.read_bytes()).decode()
+    bg64 = base64.b64encode(background.read_bytes()).decode() if inline_assets else ""
+    bg_url = f"data:{mime};base64,{bg64}" if inline_assets else background.resolve().as_uri()
     if not logo.is_file():
         raise FileNotFoundError("Figma logo symbol asset missing: " + str(logo))
-    logo64 = base64.b64encode(logo.read_bytes()).decode()
+    logo64 = base64.b64encode(logo.read_bytes()).decode() if inline_assets else ""
+    logo_url = f"data:image/svg+xml;base64,{logo64}" if inline_assets else logo.resolve().as_uri()
     extra_logo_assets = [
         ("logo_ellipse10.svg", 61, 66, 51, 51),
         ("logo_vector7.svg", 92.75, 61.5, 16.049, 13.039),
@@ -123,21 +143,22 @@ def make_figma_cover(s, title):
         asset = logo.parent / filename
         if not asset.is_file():
             raise FileNotFoundError("Figma logo layer missing: " + str(asset))
-        encoded = base64.b64encode(asset.read_bytes()).decode()
+        encoded = base64.b64encode(asset.read_bytes()).decode() if inline_assets else ""
+        asset_url = f"data:image/svg+xml;base64,{encoded}" if inline_assets else asset.resolve().as_uri()
         extra_logo_html += (
-            f'<img class="logo-extra" src="data:image/svg+xml;base64,{encoded}" '
+            f'<img class="logo-extra" src="{asset_url}" '
             f'style="left:{x}px;top:{y}px;width:{width}px;height:{height}px">'
         )
 
 
     font_dir = Path("/opt/unreal-github/figma_assets/fonts")
-    rokg64 = base64.b64encode(
-        (font_dir / "ROKG_R.ttf").read_bytes()
-    ).decode()
+    rokg_path = Path((fonts or {}).get('ROKG_R.ttf', font_dir/'ROKG_R.ttf'))
+    rokg64 = base64.b64encode(rokg_path.read_bytes()).decode() if inline_assets else ''
+    rokg_url = f'data:font/ttf;base64,{rokg64}' if inline_assets else rokg_path.resolve().as_uri()
 
 
     eyebrow = esc(s.get("eyebrow", "비현실문제해결부 심의 기록"))
-    headline = esc(s.get("headline", title)).replace("\\n", "<br>")
+    headline = esc(s.get("headline", title)).replace("\\n", "<br>").replace("\n", "<br>")
 
     return f"""<!doctype html>
 <html lang="ko">
@@ -146,7 +167,7 @@ def make_figma_cover(s, title):
 <style>
 @font-face {{
     font-family: 'ROKG';
-    src: url('data:font/ttf;base64,{rokg64}') format('truetype');
+    src: url('{rokg_url}') format('truetype');
     font-weight: 400;
 }}
 
@@ -167,7 +188,7 @@ body {{
 .background {{
     position: absolute;
     inset: -5px;
-    background-image: url('data:{mime};base64,{bg64}');
+    background-image: url('{bg_url}');
     background-position: center;
     background-size: cover;
     filter: none;
@@ -286,7 +307,7 @@ body {{
 <div class="overlay"></div>
 
 {extra_logo_html}
-<div class="logo-symbol"><img src="data:image/svg+xml;base64,{logo64}"></div>\n<div class="logo-text">비현실문제해결부</div>
+<div class="logo-symbol"><img src="{logo_url}"></div>\n<div class="logo-text">비현실문제해결부</div>
 
 <div class="case-number">사건번호 제 2026-1024호</div>
 <div class="top-line"></div>
@@ -298,7 +319,7 @@ body {{
 </html>"""
 
 
-def make_figma_resolution(s, title, extra_background=False):
+def make_figma_resolution(s, title, extra_background=False, fonts=None):
     """Slide 3: Figma verdict layout with dynamic copy and original artwork."""
     from pathlib import Path
     from html import escape
@@ -314,7 +335,7 @@ def make_figma_resolution(s, title, extra_background=False):
     # The verdict is a paragraph, not a baked-in image or static headline.
     data["body"] = data.get("body") or data.get("verdict") or data.get("resolution") or data.get("headline") or ""
     data["background_image"] = (data.get("background_image") or str(root / "content_background.png")) if extra_background else str(background)
-    markup = make_figma_content(data, title)
+    markup = make_figma_content(data, title, fonts)
     # Preserve the already-approved typography, responsive emphasis placement and logo.
     # Swap only the frame-specific Figma background, stroke, and black bottom gradient.
     markup = markup.replace(
@@ -361,74 +382,168 @@ def expand_slides(draft):
             ("ending", ending)]
 
 
-async def _render(draft, prefix):
+def subset_fonts(draft, destination):
+    """Keep original outlines/metrics/hinting; remove only unused font glyphs."""
+    import json
+    import string
+    from fontTools import subset
+    from fontTools.ttLib import TTFont
+    text = json.dumps(draft, ensure_ascii=False) + string.printable + (
+        '비현실문제해결부 심의 기록 사건번호 제 2026-1024호 민원 접수 유형 '
+        '처분/판정안 심의 경과 퇴근 방해 및 용어 왜곡 · “”'
+    )
+    root = Path('/opt/unreal-github/figma_assets/fonts')
+    destination = Path(destination)
+    destination.mkdir(parents=True, exist_ok=True)
+    paths = {}
+    for name in ('ROKG_R.ttf', 'ChosunNm-full-fixed.ttf'):
+        options = subset.Options()
+        options.glyph_names = True
+        options.layout_features = ['*']
+        with TTFont(root / name, recalcTimestamp=False) as font:
+            subsetter = subset.Subsetter(options=options)
+            subsetter.populate(text=text)
+            subsetter.subset(font)
+            target = destination / name
+            font.save(target)
+            paths[name] = target
+    return paths
+
+
+async def _render(draft, prefix, progress=None):
+    def mark(stage, **details):
+        if progress:
+            progress(stage, details)
     pfx = Path(prefix)
     pfx.parent.mkdir(parents=True, exist_ok=True)
     paths = []
     pages = expand_slides(draft)
-    async with async_playwright() as p:
-        with tempfile.TemporaryDirectory(prefix='unreal-render-', dir='/dev/shm') as profile:
+    if len(pages) not in (4, 5):
+        raise ValueError("Expected 4–5 pages")
+    with tempfile.TemporaryDirectory(prefix='unreal-render-', dir=os.getenv('UNREAL_BROWSER_PROFILE_DIR', '/tmp')) as profile:
+        import json, subprocess, sys
+        source = Path(profile)/'source.json'
+        source.write_text(json.dumps(draft, ensure_ascii=False))
+        mark("font_prepare_start")
+        subprocess.run([sys.executable, '-m', 'bureau.font_subset', str(source), str(Path(profile)/'render-fonts')],
+                       cwd=Path(__file__).parent, check=True, timeout=int(os.getenv('UNREAL_FONT_TIMEOUT_SECONDS','45')))
+        fonts = {name:Path(profile)/'render-fonts'/name for name in ('ROKG_R.ttf','ChosunNm-full-fixed.ttf')}
+        mark("font_prepare_done", bytes=sum(p.stat().st_size for p in fonts.values()))
+        mark("driver_start")
+        async with async_playwright() as p:
+            mark("driver_ready")
+            mark("browser_start")
             context = await p.chromium.launch_persistent_context(
                 user_data_dir=profile, headless=True,
                 viewport={'width': WIDTH, 'height': HEIGHT},
                 device_scale_factor=1, timeout=45000,
-                args=['--no-sandbox', '--disable-dev-shm-usage',
+                ignore_default_args=['--disable-dev-shm-usage'],
+                args=['--no-sandbox', '--no-zygote', '--single-process',
+                      '--disk-cache-dir=' + str(Path(profile)/'cache'),
                       '--disable-gpu', '--disable-extensions',
                       '--disable-background-networking', '--no-first-run'],
             )
+            mark("browser_ready")
+            session=None
             try:
+                await context.route('http://**/*', lambda route: route.abort())
+                await context.route('https://**/*', lambda route: route.abort())
                 page = context.pages[0] if context.pages else await context.new_page()
+                session = await context.new_cdp_session(page)
                 for i, (kind, slide) in enumerate(pages):
+                    mark("page_start", page=i+1, kind=kind)
                     title = draft.get('title', '비현실문제해결부')
+                    if kind=='ending':
+                        # The approved ending is already the exact final raster.
+                        # Decode/validate/copy pixels instead of re-encoding it
+                        # through Chromium and a multi-megabyte CDP response.
+                        from PIL import Image
+                        path=str(pfx.parent/(pfx.name+f'_{i+1:02d}.png'))
+                        with Image.open('/opt/unreal-github/figma_assets/ending_fixed.png') as artwork:
+                            if artwork.size!=(WIDTH,HEIGHT): raise ValueError('Approved ending dimensions changed')
+                            artwork.convert('RGB').save(path,'PNG',compress_level=1)
+                        mark('layout_checked',page=i+1,fonts={},boxes=[],brokenImages=False,overflow=False,fixed_artwork=True)
+                        paths.append(path);mark('page_saved',page=i+1)
+                        continue
                     if kind == "cover":
-                        markup = make_figma_cover(slide, title)
+                        markup = make_figma_cover(slide, title, fonts, inline_assets=False)
                     elif kind == "content":
-                        markup = make_figma_content(slide, title)
+                        markup = make_figma_content(slide, title, fonts)
                     elif kind == "resolution_extra":
                         # Same verdict typography, with a replaceable content image.
                         extra = dict(slide)
                         extra.setdefault("background_image", str(Path("/opt/unreal-github/figma_assets/resolution_background.png")))
-                        markup = make_figma_resolution(extra, title, extra_background=True)
+                        markup = make_figma_resolution(extra, title, extra_background=True, fonts=fonts)
                     elif kind == "resolution_final":
-                        markup = make_figma_resolution(slide, title)
+                        markup = make_figma_resolution(slide, title, fonts=fonts)
                     else:
-                        markup = make_fixed_slide(Path("/opt/unreal-github/figma_assets/ending_fixed.png"))
+                        markup = make_fixed_slide(Path("/opt/unreal-github/figma_assets/ending_fixed.png"), inline_assets=False)
                     needs_file = kind in ("content", "resolution_extra", "resolution_final")
-                    if needs_file:
-                        with tempfile.NamedTemporaryFile(
-                            mode='w', suffix='.html', encoding='utf-8',
-                            dir='/opt/unreal-github/figma_assets', delete=False
-                        ) as temp_html:
-                            temp_html.write(markup)
-                            html_path = Path(temp_html.name)
-                        try:
-                            await page.goto(html_path.as_uri(), wait_until='load', timeout=45000)
-                        finally:
-                            html_path.unlink(missing_ok=True)
-                    else:
-                        await page.set_content(markup, wait_until='load', timeout=45000)
-                    await page.evaluate('document.fonts.ready')
-                    if needs_file:
-                        loaded = await page.evaluate("""async () => {
-                          await document.fonts.load('32px ChosunilboNM', '퇴근 방해 및 용어 왜곡');
-                          return document.fonts.check('32px ChosunilboNM', '퇴근 방해 및 용어 왜곡');
-                        }""")
-                        if not loaded:
-                            raise RuntimeError("ChosunilboNM font failed to load")
-                        # Fail loudly rather than silently clipping verdict copy.
-                        fits = await page.evaluate("""() => {
-                          const el = document.querySelector('.body');
-                          return !el || el.getBoundingClientRect().bottom <= 1330;
-                        }""")
-                        if not fits:
-                            raise ValueError(f"Slide {i+1} text exceeds safe area; split the source verdict into shorter paragraphs")
+                    # Navigate to RAM-backed HTML instead of transferring megabytes
+                    # of embedded artwork through the Node/CDP pipe on every page.
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.html', encoding='utf-8',
+                                                     dir=profile, delete=False) as temp_html:
+                        temp_html.write(markup)
+                        html_path = Path(temp_html.name)
+                    mark('navigation_start', page=i+1, html_bytes=len(markup.encode()))
+                    try:
+                        await page.goto(html_path.as_uri(), wait_until='load', timeout=15000)
+                    finally:
+                        html_path.unlink(missing_ok=True)
+                    mark('markup_loaded', page=i+1)
+                    validation = await asyncio.wait_for(page.evaluate("""async ({ending, body}) => {
+                      await document.fonts.ready;
+                      // complete=true alone does not guarantee a decoded SVG
+                      // has reached the compositor before captureScreenshot.
+                      const decoded = await Promise.all([...document.images].map(img => img.decode().then(() => true, () => false)));
+                      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                      const required = ending ? [] : ['ROKG'];
+                      if (body) required.push('ChosunilboNM');
+                      const fonts = {};
+                      for (const family of required) {
+                        const faces = await document.fonts.load(`32px ${family}`, '비현실문제부 퇴근 방해 및 용어 왜곡');
+                        fonts[family] = faces.length > 0 && faces.every(f => f.status === 'loaded');
+                      }
+                      const boxes = [...document.querySelectorAll('.headline,.body,.eyebrow')].map(el => {
+                        const r = el.getBoundingClientRect();
+                        const range = document.createRange(); range.selectNodeContents(el);
+                        const texts = [...range.getClientRects()];
+                        const overflow = r.left < 0 || r.right > 1080 || r.bottom > 1330 ||
+                          el.scrollWidth > el.clientWidth + 2 ||
+                          texts.some(t => t.right > 1060 || t.left < 0 || t.bottom > 1330);
+                        return {element: el.className, left:r.left, right:r.right, bottom:r.bottom, overflow};
+                      });
+                      const brokenImages = decoded.some(ok => !ok) || [...document.images].some(img => !img.complete || img.naturalWidth === 0);
+                      return {fonts, boxes, brokenImages, overflow:boxes.some(b => b.overflow)};
+                    }""", {'ending':kind == 'ending', 'body':needs_file}), timeout=10)
+                    mark('layout_checked', page=i+1, **validation)
+                    if not all(validation['fonts'].values()):
+                        raise RuntimeError('Approved Korean font failed to load')
+                    if validation['brokenImages']:
+                        raise ValueError('Figma logo/image asset failed to load')
+                    if validation['overflow']:
+                        raise ValueError(f'Slide {i+1} text overflows approved frame; request shorter copy')
                     path = str(pfx.parent / (pfx.name + f'_{i+1:02d}.png'))
-                    await page.screenshot(path=path, type='png', timeout=45000)
+                    mark('screenshot_start', page=i+1)
+                    import base64
+                    capture = await asyncio.wait_for(session.send('Page.captureScreenshot', {
+                        'format':'png', 'fromSurface':True, 'captureBeyondViewport':False,
+                        'optimizeForSpeed':True,
+                        'clip':{'x':0,'y':0,'width':WIDTH,'height':HEIGHT,'scale':1},
+                    }), timeout=15)
+                    Path(path).write_bytes(base64.b64decode(capture['data']))
+                    mark('screenshot_done', page=i+1)
                     paths.append(path)
+                    mark('page_saved',page=i+1)
             finally:
-                await context.close()
+                mark("browser_close_start")
+                # Browser.close owns process teardown. Closing the persistent
+                # context first can stall in its request-context disposal path.
+                await asyncio.wait_for(context.browser.close() if context.browser else context.close(), timeout=15)
+                mark("browser_closed")
+    mark("driver_closed")
     return paths
 
 
-def render_carousel(draft, output_prefix):
-    return asyncio.run(_render(draft, output_prefix))
+def render_carousel(draft, output_prefix, progress=None):
+    return asyncio.run(_render(draft, output_prefix, progress))

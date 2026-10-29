@@ -27,6 +27,8 @@ def env_value(key):
 
 
 def generate(title, output):
+    from bureau.config import Config
+    Config.load().require_external()
     key = env_value("POLLINATIONS_API_KEY")
     if not key:
         raise RuntimeError("POLLINATIONS_API_KEY not configured. No API call made.")

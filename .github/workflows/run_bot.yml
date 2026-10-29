@@ -26,6 +26,9 @@ permissions:
 
 jobs:
   run-bot:
+    # Safety gate: VM migration must disable this workflow in GitHub before enabling timer.
+    # New manual dispatch lives in manual_vm.yml and shares the VM database.
+    if: ${{ vars.LEGACY_CLOUD_EXECUTION_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -53,4 +56,6 @@ jobs:
           ACTION_TYPE: ${{ inputs.action_type || 'generate_trends' }}
           CHOICE_NUMBER: ${{ inputs.choice_number || '1' }}
           MAX_AGE_HOURS: '72'
-        run: python bot.py
+        run: |
+          echo 'Legacy cloud execution retired. Use VM manual enqueue workflow.'
+          exit 1

@@ -24,6 +24,8 @@ def load_env():
 
 
 def main():
+    from bureau.config import Config
+    Config.load().require_external()
     env = load_env()
     token = env.get("TELEGRAM_BOT_TOKEN")
     chat_id = env.get("TELEGRAM_CHAT_ID")
