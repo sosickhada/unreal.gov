@@ -92,8 +92,8 @@ class ProductionPipelineTests(unittest.TestCase):
         self.assertNotIn('secret',str(ctx.exception))
         self.engine.news=lambda:fetch_news(http)
         self.store.schedule();self.engine.run_one()
-        self.assertEqual(self.q('SELECT error_code FROM jobs')[0]['error_code'],'NewsFailure')
-        self.assertEqual(self.claude.calls,0)
+        self.assertEqual(self.q('SELECT state FROM jobs')[0]['state'],'succeeded')
+        self.assertEqual(len(self.q('SELECT * FROM candidates')),3)
 
     def test_invalid_candidate_response_saved_without_paid_retry(self):
         original=self.claude.generate
@@ -102,8 +102,9 @@ class ProductionPipelineTests(unittest.TestCase):
         self.claude.generate=invalid
         self.store.schedule();self.engine.run_one()
         job=self.q('SELECT * FROM jobs')[0]
-        self.assertEqual(job['error_code'],'candidate_response_invalid')
-        resume(self.store,job['id']);self.engine.run_one()
+        self.assertEqual(job['state'],'succeeded')
+        self.assertEqual(len(self.q('SELECT * FROM candidates')),3)
+        self.assertFalse(self.engine.run_one())
         self.assertEqual(self.claude.calls,1)
 
     def test_quality_gate_acceptance_and_revision(self):
@@ -115,7 +116,8 @@ class ProductionPipelineTests(unittest.TestCase):
         self.assertEqual(self.store.row(rid)['status'],'draft_review')
         self.assertFalse(self.q("SELECT * FROM jobs WHERE kind='render'"))
         with self.assertRaises(ValueError):self.store.decide(rid,1,True)
-        self.store.accept_draft(rid,1);self.store.accept_draft(rid,1)
+        self.store.accept_draft(rid,1)
+        with self.assertRaises(ValueError): self.store.accept_draft(rid,1)
         self.assertEqual(len(self.q("SELECT * FROM jobs WHERE kind='render'")),1)
         self.engine.run_one();self.assertEqual(self.store.row(rid)['status'],'preview_ready')
         self.assertEqual(self.claude.calls,2)

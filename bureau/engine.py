@@ -3,7 +3,7 @@ import datetime as dt
 from zoneinfo import ZoneInfo
 from .store import now, kst_day, Store
 from .preflight import ConfigurationError
-from .content import fetch_news, candidate_prompt, draft_prompt, parse_json, validate_candidates, validate_draft, draft_quality, distinct_news, NewsFailure
+from .content import fetch_news, candidate_prompt, draft_prompt, parse_json, validate_candidates, validate_draft, draft_quality, distinct_news, NewsFailure, relevant_news, everyday_candidates
 
 
 class Uncertain(RuntimeError):
@@ -88,7 +88,7 @@ class Engine:
             c.execute('UPDATE jobs SET state=?,error_code=?,finished_at=? WHERE id=?',(state,error,now(),job['id']))
             self.store.event(c,job['id'],state,error or '')
             if error:
-                self.store.notify(c,f'error:{job["id"]}:{job["attempts"]}',{'text':f'⚠️ 작업 {job["id"]} / {job["kind"]}: {state} ({error}). '+configuration_detail+' /status 로 확인하세요. 자동 유료 재호출 없음.'})
+                self.store.notify(c,f'error:{job["id"]}:{job["attempts"]}',{'text':f'⚠️ 작업 {job["id"]} / {job["kind"]}: {state} ({error}). '+configuration_detail+(' 게시 결과 불확실: 재시도 금지, 실제 게시 여부 확인 필요.' if state=='uncertain' else ' 설정/원인을 해결한 뒤 /retry로 재개 가능.')+' /status 로 확인하세요. 자동 유료 재호출 없음.'})
         return True
 
     def candidates(self, job, p):
@@ -96,23 +96,30 @@ class Engine:
             batch=c.execute('SELECT * FROM batches WHERE id=?',(p['batch_id'],)).fetchone()
             if batch['day']!=kst_day():
                 raise Waiting('Expired daily batch; do not catch up stale news')
-        news=self.step(job,'rss',self.news)
-        with self.store.tx() as c:
-            prior=[json.loads(row[0]) for row in c.execute('SELECT x.payload FROM candidates x JOIN selections s ON s.candidate_id=x.id')]
-        news=distinct_news(news,[{'url':x['source_url'],'title':x.get('source',{}).get('title',x['title'])} for x in prior])
-        if len(news)<3:
-            raise ValueError('Fewer than three fresh sources; no Claude request made')
-        raw=self.step(job,'claude_candidates',lambda:self.claude.generate(candidate_prompt(news),3000),True,True)
-        try:
-            data=validate_candidates(parse_json(raw['raw']),news)
-        except (ValueError,KeyError,TypeError):
-            with self.store.tx() as c:c.execute("UPDATE batches SET status='review_required' WHERE id=?",(p['batch_id'],))
-            raise Waiting('Candidate response requires review; saved response retained','candidate_response_invalid') from None
+        news=[]
+        if self.config.env.get('USE_NEWS_REFERENCE')=='1':
+            try: news=relevant_news(self.step(job,'rss',self.news))
+            except NewsFailure: news=[]
+        # Seed bank keeps daily delivery independent of RSS/model availability.
+        data=everyday_candidates(batch['day'],batch['generation'])
+        if self.config.env.get('CANDIDATE_GENERATION_MODE','curated')=='model':
+            try:
+                raw=self.step(job,'claude_candidates',lambda:self.claude.generate(candidate_prompt(news),3000),True,True)
+                data=validate_candidates(parse_json(raw['raw']),news)
+            except (ValueError,KeyError,TypeError,Uncertain,Waiting):
+                # ConfigurationError inherits ValueError. Preserve uncertain paid
+                # intent, but do not let a candidate model outage reduce the batch.
+                with self.store.tx() as c:
+                    self.store.event(c,p['batch_id'],'candidate_fallback','model unavailable/invalid; reviewed everyday seeds used; no retry')
         with self.store.tx() as c:
             for i,candidate in enumerate(data['candidates'],1):
                 c.execute('INSERT OR IGNORE INTO candidates(batch_id,position,title,payload,created_at) VALUES(?,?,?,?,?)',(p['batch_id'],i,candidate['title'],json.dumps(candidate,ensure_ascii=False),now()))
             c.execute("UPDATE batches SET status='ready' WHERE id=?",(p['batch_id'],))
-            self.store.notify(c,f'candidates:{p["batch_id"]}',candidate_message(c,p['batch_id']))
+            message=candidate_message(c,p['batch_id'])
+            origin=c.execute("SELECT detail FROM events WHERE subject=? AND action='scheduled' ORDER BY id LIMIT 1",(str(p['batch_id']),)).fetchone()
+            if origin and json.loads(origin[0])['source']=='vm_timer':
+                message['expires_at']=dt.datetime.combine(dt.date.fromisoformat(batch['day']),dt.time(18,5),ZoneInfo('Asia/Seoul')).astimezone(dt.timezone.utc).isoformat()
+            self.store.notify(c,f'candidates:{p["batch_id"]}',message)
 
     def draft(self, job, p):
         r=self.store.row(p['id'])
@@ -123,6 +130,10 @@ class Engine:
         if not candidate:
             raise Waiting('Legacy record: source must be imported explicitly; no fabricated evidence')
         source=json.loads(candidate[0])
+        if p['revision']>1:
+            with self.store.tx() as c:
+                prior=c.execute('SELECT payload FROM draft_versions WHERE selection_id=? AND revision<? ORDER BY revision DESC LIMIT 1',(p['id'],p['revision'])).fetchone()
+            if prior: source['previous_draft']=json.loads(prior[0])
         raw=self.step(job,'claude_draft',lambda:self.claude.generate(draft_prompt(source,r['revision_note'] or ''),4000),True,True)
         try:
             draft=validate_draft(parse_json(raw['raw']),source['source_url'])
@@ -133,15 +144,13 @@ class Engine:
         issues=draft_quality(draft)
         with self.store.tx() as c:
             c.execute('INSERT OR IGNORE INTO draft_versions VALUES(?,?,?,?)',(p['id'],p['revision'],json.dumps(draft,ensure_ascii=False),now()))
-            changed=c.execute("UPDATE selections SET draft_json=?,status=? WHERE id=? AND revision=? AND status IN ('selected','revision_requested','draft_ready')",(json.dumps(draft,ensure_ascii=False),'draft_review' if issues else 'draft_ready',p['id'],p['revision'])).rowcount
+            changed=c.execute("UPDATE selections SET draft_json=?,status=? WHERE id=? AND revision=? AND status IN ('selected','revision_requested','draft_ready')",(json.dumps(draft,ensure_ascii=False),'draft_review' if issues else 'planning_review',p['id'],p['revision'])).rowcount
             if changed!=1: raise ValueError('Content changed')
             if issues:
                 c.execute('INSERT OR REPLACE INTO quality_reviews VALUES(?,?,?,NULL)',(p['id'],p['revision'],json.dumps(issues)))
                 self.store.notify(c,f'quality:{p["id"]}:{p["revision"]}',{'text':f'원고 품질 검토 필요: {p["id"]} v{p["revision"]}: '+', '.join(issues)+f'\n/preview {p["id"]}\n/revise {p["id"]} 수정내용 또는 검토 후 /acceptdraft {p["id"]} {p["revision"]}'})
-            else:
-                self.store.enqueue(c,f'render:{p["id"]}:{p["revision"]}','render',p)
-            self.store.notify(c,f'draft:{p["id"]}:{p["revision"]}',{'text':f'📝 원고 {p["id"]} v{p["revision"]}\n'+draft['caption']+'\n\n'+'\n\n'.join(s.get('headline','')+'\n'+s.get('body','') for s in draft['slides'][:3])})
-        if issues: raise Waiting('Editorial review required','draft_quality_review')
+            self.store.notify(c,f'draft:{p["id"]}:{p["revision"]}',plan_message(p['id'],p['revision'],draft))
+
 
     def render(self, job, p):
         r=self.store.row(p['id'])
@@ -164,12 +173,28 @@ class Engine:
                 with self.store.tx() as c:
                     self.store.notify(c,f'image-invalid:{p["id"]}:{p["revision"]}',{'text':f'사진 재검토 필요: {p["id"]} v{p["revision"]}. 등록 파일·해시·해상도·검토 이력·사진 중복을 확인하세요.'})
                 raise Waiting('Photographic inputs need manual reinspection') from None
+            if set(chosen)!=set(SLOTS) and self.config.env.get('AUTO_PHOTO_ACQUIRE')=='1':
+                from .images import acquire_photos,PhotoRateLimited,PhotoScreeningUnavailable
+                try: acquired=acquire_photos(self.config,draft,chosen,
+                    lambda name,call,ambiguous=False,paid=False:self.step(job,name,call,ambiguous,paid),p['id'],p['revision'],p.get('exclude_photo_ids',()))
+                except PhotoScreeningUnavailable:
+                    raise Waiting('Image screening failed; automatic paid retries stopped','photo_screening_unavailable') from None
+                except PhotoRateLimited:
+                    raise Waiting('Image provider rate limited; automatic retries stopped','photo_provider_rate_limited') from None
+                chosen=acquired['photos']
+                with self.store.tx() as c:
+                    self.store.event(c,p['id'],'automatic_photo_search',json.dumps({'revision':p['revision'],'attempts':acquired['attempts']}))
+                    if set(chosen)!=set(SLOTS):
+                        links=acquired['candidate_links']
+                        self.store.notify(c,f'photo-choice:{p["id"]}:{p["revision"]}',{
+                            'text':f'사진 선택이 필요합니다: {p["id"]} v{p["revision"]}. 본문/결의별 최초 검색과 대체 검색 최대 2회를 마쳤으나 적합한 사진 2장을 확보하지 못했습니다. 아래 출처에서 사진을 선택하거나 이미지 수정으로 구체적인 소재를 알려주세요. 원본 등록 시 출처·라이선스·해상도 확인이 필요합니다.\n'+'\n'.join(links),
+                            'reply_markup':{'inline_keyboard':[[{'text':'이미지 수정 / 검색어 변경','callback_data':f'imageedit:{p["id"]}:{p["revision"]}'}]]}})
             with self.store.tx() as c:
                 if chosen:
                     c.execute('INSERT OR REPLACE INTO image_inputs VALUES(?,?,?,?)',(p['id'],p['revision'],json.dumps({'photos':chosen}),now()))
                 if set(chosen)!=set(SLOTS):
                     self.store.notify(c,f'image-review:{p["id"]}:{p["revision"]}',{'text':f'사진 수동 검토 필요: {p["id"]} v{p["revision"]}. 본문/중간 결의에 서로 다른 고해상도 실사 2장을 등록하세요. 저해상도·AI·명확한 얼굴 사진은 사용하지 않습니다.'})
-                    if self.config.env.get('AUTO_IMAGE_SEARCH')=='1':
+                    if self.config.env.get('AUTO_IMAGE_SEARCH')=='1' and self.config.env.get('AUTO_PHOTO_ACQUIRE')!='1':
                         for slot in SLOTS:
                             query=draft.get('image_queries',{}).get(slot)
                             if slot not in chosen and query:
@@ -195,6 +220,13 @@ class Engine:
             if changed!=1: raise ValueError('Preview version changed')
             self.store.notify(c,f'media:{p["id"]}:{p["revision"]}',{'text':f'카드뉴스 {p["id"]} v{p["revision"]} / {len(media["files"])}장','files':media['files'],'sha256':media['sha256']})
             approval=preview_message(p['id'],p['revision'])
+            if provenance.get('photos'):
+                approval['text']+='\n\n사진 출처 및 검토 근거:'
+                for slot,photo in provenance['photos'].items():
+                    mode='자동 시각 검사 통과 · 사람 검토 전' if photo.get('selection_policy')=='automated-preview-v1' else '등록된 수동 검토 사진'
+                    approval['text']+=f'\n{slot}: {mode}\n{photo.get("source_url", "")}\n{photo.get("license_url", "")}'
+                approval['text']+='\n자동 검사는 권리·AI 여부를 보증하지 않습니다. 부적절하면 이미지 수정을 선택하세요.'
+
             approval['after_delivery']=f'media:{p["id"]}:{p["revision"]}'
             self.store.notify(c,f'approval:{p["id"]}:{p["revision"]}',approval)
 
@@ -218,6 +250,9 @@ class Engine:
         if r['revision']!=p['revision'] or r['approved_revision']!=p['revision'] or r['reviewed_revision']!=p['revision'] or r['status'] not in ('approved','publish_waiting','published'):
             raise Waiting('Explicit review and approval of this exact revision required')
         if r['published_id']:
+            permalink=self.step(job,'ig_permalink',lambda:self.instagram.permalink(r['published_id']))
+            with self.store.tx() as c:
+                self.store.notify(c,f'published-url:{p["id"]}',{'text':'Instagram 게시 URL: '+permalink['permalink']})
             return
         with self.store.tx() as c:
             c.execute("INSERT OR IGNORE INTO publications(selection_id,revision,state,updated_at) VALUES(?,?,'pending',?)",(p['id'],p['revision'],now()))
@@ -255,7 +290,10 @@ class Engine:
         with self.store.tx() as c:
             c.execute("UPDATE publications SET state='published',media_id=?,updated_at=? WHERE selection_id=?",(result['id'],now(),p['id']))
             c.execute("UPDATE selections SET status='published',published_id=? WHERE id=?",(result['id'],p['id']))
-            self.store.notify(c,f'published:{p["id"]}',{'text':f'✅ 게시 완료: {p["id"]} / Instagram ID {result["id"]}'})
+            self.store.notify(c,f'published:{p["id"]}',{'text':f'✅ 게시 완료: {p["id"]} / Instagram ID {result["id"]}\n게시 확인 시각(UTC): {now()}\n게시 URL 확인 중입니다.'})
+        permalink=self.step(job,'ig_permalink',lambda:self.instagram.permalink(result['id']))
+        with self.store.tx() as c:
+            self.store.notify(c,f'published-url:{p["id"]}',{'text':f'Instagram 게시 URL: {permalink["permalink"]}\n게시 확인 시각(UTC): {now()}'})
 
     def deliver_one(self):
         if self.config.env.get('ENABLE_EXTERNAL_CALLS') != '1' or self.config.env.get('AUTOMATION_PAUSED') == '1':
@@ -268,6 +306,11 @@ class Engine:
                     SELECT 1 FROM outbox dependency WHERE dependency.delivery_key=json_extract(o.payload,'$.after_delivery') AND dependency.state='sent'))
                 ORDER BY id LIMIT 1""").fetchone()
             if not r: return False
+            payload=json.loads(r['payload'])
+            if payload.get('expires_at') and now()>payload['expires_at']:
+                c.execute("UPDATE outbox SET state='expired',error_code='dispatch_window_missed' WHERE id=?",(r['id'],))
+                self.store.event(c,r['id'],'delivery_expired',r['delivery_key'])
+                return True
             c.execute("UPDATE outbox SET state='sending' WHERE id=?",(r['id'],))
         try:
             ids=self.telegram.send(json.loads(r['payload'])); state='sent'; error=None
@@ -275,23 +318,35 @@ class Engine:
             ids=None; state='uncertain'; error='delivery_outcome_unknown'
         with self.store.tx() as c:
             c.execute('UPDATE outbox SET state=?,remote_ids=?,error_code=? WHERE id=?',(state,json.dumps(ids),error,r['id']))
+            self.store.event(c,r['id'],'delivery_'+state,r['delivery_key'])
         return True
 
 
 def candidate_message(c,batch):
     rows=c.execute('SELECT * FROM candidates WHERE batch_id=? ORDER BY position',(batch,)).fetchall()
-    lines=['🏛️ 오늘의 뉴스 기반 가상 심의 후보 (출처 원문 확인 필요)']; buttons=[]
+    lines=['🏛️ 오늘의 일상 심의 후보 · 가상 사건']; buttons=[]
     for row in rows:
         p=json.loads(row['payload'])
-        lines.append(f'{row["position"]}. {row["title"]}\n{p["summary"]}\n풍자 방향: {p["satire_angle"]}\n출처: '+p.get('source',{}).get('publisher','원문 버튼 확인'))
+        lines.append(f'{row["position"]}. {row["title"]}\n상황: {p["summary"]}\n공감: {p.get("empathy", "직접 검토 필요")}\n훅: {p["hook"]}\n판정: {p["satire_angle"]}\n공유 이유: {p.get("share_reason", "직접 검토 필요")}')
         row_buttons=[]
-        if row['status']=='available': row_buttons.append({'text':f'{row["position"]}번 선택','callback_data':f'candidate:{row["id"]}'})
-        row_buttons.append({'text':f'{row["position"]}번 원문','url':p['source_url']})
-        buttons.append(row_buttons)
-    buttons.append([{'text':'후보 묶음 거절','callback_data':f'batchreject:{batch}'}])
+        if row['status']=='available': row_buttons.append({'text':f'후보 {row["position"]} 선택','callback_data':f'candidate:{row["id"]}'})
+        if p.get('source_url'): row_buttons.append({'text':'참고 원문','url':p['source_url']})
+        if row_buttons: buttons.append(row_buttons)
+    buttons.append([{'text':'후보 다시 생성','callback_data':f'batchregen:{batch}'}])
     return {'text':'\n\n'.join(lines),'reply_markup':{'inline_keyboard':buttons}}
 
 
+def plan_message(rid,revision,draft):
+    return {'text':f'📝 기획안 {rid} v{revision}\n'+draft['caption']+'\n\n'+'\n\n'.join(s.get('headline','')+'\n'+s.get('body','') for s in draft['slides'][:3]),
+            'reply_markup':{'inline_keyboard':[
+                [{'text':'기획 승인','callback_data':f'planapprove:{rid}:{revision}'}],
+                [{'text':'기획 수정','callback_data':f'planedit:{rid}:{revision}'}],
+                [{'text':'후보 선택으로 돌아가기','callback_data':f'back:{rid}:{revision}'}]]}}
+
+
 def preview_message(rid,revision):
-    return {'text':f'심의 {rid} v{revision}\n원문·사실/창작 구분·한국어 문장·이미지 관련성·라이선스·얼굴/초상권을 직접 검토하세요.\n/review {rid} {revision} 로 검토 확인 후 승인하세요.\n수정: /revise {rid} 수정 요청\n원고/이미지 재조회: /preview {rid}',
-            'reply_markup':{'inline_keyboard':[[{'text':'게시 승인','callback_data':f'approve:{rid}:{revision}'},{'text':'거절','callback_data':f'reject:{rid}:{revision}'}],[{'text':'원고 재생성','callback_data':f'regenerate:{rid}:{revision}'}]]}}
+    return {'text':f'심의 {rid} v{revision}\n최종 승인은 현재 버전의 문장·사실/창작 구분·이미지 관련성·라이선스·얼굴/초상권을 직접 검토했다는 확인과 Instagram 게시 요청입니다.',
+            'reply_markup':{'inline_keyboard':[
+                [{'text':'최종 승인','callback_data':f'approve:{rid}:{revision}'}],
+                [{'text':'이미지 수정','callback_data':f'imageedit:{rid}:{revision}'},{'text':'기획 수정','callback_data':f'planedit:{rid}:{revision}'}],
+                [{'text':'게시 취소','callback_data':f'reject:{rid}:{revision}'}]]}}

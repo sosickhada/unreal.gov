@@ -23,7 +23,7 @@ from test_system import FakeClaude, FakeTelegram, FakeInstagram, NEWS
 def main():
     root=Path('output/offline-acceptance')/now().replace(':','-')
     root.mkdir(parents=True)
-    config=Config(root/'test.db',{'ENABLE_EXTERNAL_CALLS':'1','IMAGE_DIR':str(root.resolve()),
+    config=Config(root/'test.db',{'ENABLE_EXTERNAL_CALLS':'1','CANDIDATE_GENERATION_MODE':'model','USE_NEWS_REFERENCE':'1','IMAGE_DIR':str(root.resolve()),
         'PUBLIC_BASE_URL':'https://offline.invalid','REQUIRE_TOPIC_IMAGE':'1','RENDER_TIMEOUT_SECONDS':'180','RENDER_TRACE_DIR':str(root.resolve())})
     store=Store(config.db);store.migrate()
     fixtures=[]
@@ -54,7 +54,7 @@ def main():
         store.schedule();store.schedule();assert engine.run_one()
         with store.tx() as c:cid=c.execute('SELECT id FROM candidates ORDER BY position').fetchone()[0]
         rid=store.select(cid);assert store.select(cid)==rid
-        assert engine.run_one();assert engine.run_one()
+        assert engine.run_one();store.accept_draft(rid,store.row(rid)['revision']);assert engine.run_one()
         assert store.row(rid)['status']=='preview_ready'
         with store.tx() as c:artifact=json.loads(c.execute('SELECT payload FROM assets').fetchone()[0])
         assert len(artifact['pngs'])==5

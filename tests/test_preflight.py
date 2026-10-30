@@ -56,13 +56,14 @@ class ProviderPreflightTests(unittest.TestCase):
 
     def test_configuration_failure_is_not_uncertain_paid_intent(self):
         Store(self.db).migrate();Store(self.db).schedule()
-        config=Config(self.db,self.env(CLAUDE_MODEL=''))
+        config=Config(self.db,self.env(CLAUDE_MODEL='',CANDIDATE_GENERATION_MODE='model'))
         engine=Engine(config,claude=Claude(config),media=fixtures.FakeMedia(),telegram=fixtures.FakeTelegram(),instagram=fixtures.FakeInstagram(),news=lambda:fixtures.NEWS)
         with patch('anthropic.Anthropic') as sdk:
             engine.run_one();sdk.assert_not_called()
         with engine.store.tx() as c:
             job=c.execute('SELECT state,error_code FROM jobs').fetchone()
-            self.assertEqual(tuple(job),('waiting','claude_model_missing'))
+            self.assertEqual(tuple(job),('succeeded',None))
+            self.assertEqual(c.execute('SELECT count(*) FROM candidates').fetchone()[0],3)
             self.assertEqual(c.execute("SELECT count(*) FROM checkpoints WHERE step LIKE 'claude%' ").fetchone()[0],0)
 
     def test_telegram_allowlist_rejects_empty_wildcard_and_names(self):

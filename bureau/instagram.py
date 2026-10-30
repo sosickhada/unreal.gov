@@ -62,3 +62,11 @@ class Instagram:
 
     def publish(self,container):
         return self.request('POST',self.config.env['INSTAGRAM_ACCOUNT_ID']+'/media_publish',creation_id=container)
+
+    def permalink(self, media_id):
+        from .content import safe_https
+        result=self.request('GET',media_id,fields='permalink,timestamp')
+        url=result.get('permalink','')
+        if not safe_https(url) or not url.startswith('https://www.instagram.com/'):
+            raise ExternalError('Published URL unavailable; publication will not be repeated')
+        return result

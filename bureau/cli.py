@@ -121,3 +121,32 @@ def main():
 
 if __name__=='__main__':
     main()
+
+
+def resume_photo_render(store,jid):
+    """Operator repair: skip unresolved read-only photo assessments, never replay them.
+
+    All original uncertain checkpoints remain intact. Any other unknown operation
+    blocks this narrow repair, including render, Claude draft or publication.
+    """
+    with store.tx() as c:
+        job=c.execute('SELECT * FROM jobs WHERE id=?',(jid,)).fetchone()
+        if not job or job['kind']!='render' or job['state']!='uncertain':
+            raise ValueError('Only an uncertain photo render can use this repair')
+        payload=json.loads(job['payload'])
+        current=c.execute('SELECT revision,status FROM selections WHERE id=?',(payload['id'],)).fetchone()
+        if not current or current['revision']!=payload['revision'] or current['status']!='draft_ready':
+            raise ValueError('Render version changed')
+        uncertain=c.execute("SELECT step,state FROM checkpoints WHERE job_id=? AND state IN ('running','uncertain')",(jid,)).fetchall()
+        excluded=set(payload.get('exclude_photo_ids',[]))
+        if not uncertain:raise ValueError('No unresolved photo assessment')
+        for row in uncertain:
+            if row['state']!='uncertain' or not row['step'].startswith('claude_photo_v2_'):
+                raise ValueError('Other uncertain/running operation blocks repair')
+            download=c.execute("SELECT result FROM checkpoints WHERE job_id=? AND step=? AND state='succeeded'",(jid,row['step'][len('claude_'):]+'_download')).fetchone()
+            if not download:raise ValueError('No saved source for unresolved photo')
+            photo=json.loads(download['result']);excluded.add(str(photo['id']))
+            store.event(c,jid,'unresolved_photo_skipped',json.dumps({'step':row['step'],'candidate_id':photo['id'],'charge_still_unknown':True}))
+        payload['exclude_photo_ids']=sorted(excluded)
+        c.execute("UPDATE jobs SET state='queued',error_code=NULL,payload=? WHERE id=?",(json.dumps(payload),jid))
+        store.event(c,jid,'operator_photo_repair','Uncertain checkpoints preserved; source IDs excluded; no paid replay')

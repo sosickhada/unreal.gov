@@ -12,12 +12,14 @@ from unittest.mock import patch
 from bureau.config import Config
 from bureau.store import Store,kst_day,now
 from bureau.engine import Engine
-from bureau.content import validate_candidates,validate_draft,parse_news
+from bureau.content import validate_candidates,validate_draft,parse_news,everyday_candidates
 from bureau.cli import resume
 
 
-NEWS=[{'title':f'기사 {i}','url':f'https://news.example/{i}','published_at':now(),'publisher':'언론사'} for i in range(3)]
-CANDIDATES={'candidates':[{'title':f'가상 사건 {i}','summary':'기사 제목에서 확인한 주제','satire_angle':'가상 일상 상황을 풍자','hook':'짧은 훅','source_url':n['url']} for i,n in enumerate(NEWS)]}
+NEWS=[{'title':title,'url':f'https://news.example/{i}','published_at':now(),'publisher':'언론사'} for i,title in enumerate(('퇴근 직전 업무 연락','단톡방 답장 피로','배달 최소 주문 금액'))]
+CANDIDATES=everyday_candidates('2026-10-30')
+for item,news in zip(CANDIDATES['candidates'],NEWS):
+    item['source_url']=news['url']; item['source_connection']='일상 불편을 다룬 참고 주제'
 
 
 def draft(url):
@@ -61,6 +63,7 @@ class FakeInstagram:
     def ready(self,c):
         if self.notready:raise RuntimeError('not ready')
         return {'ready':True}
+    def permalink(self,media_id):return {'permalink':'https://www.instagram.com/p/offline-only/','timestamp':now()}
     def publish(self,c):
         self.published+=1
         if self.fail:raise TimeoutError('META_TOKEN')
@@ -71,7 +74,7 @@ class SystemTest(unittest.TestCase):
     def setUp(self):
         self.net=patch.object(socket.socket,'connect',side_effect=AssertionError('NETWORK FORBIDDEN'));self.net.start()
         self.tmp=tempfile.TemporaryDirectory();self.path=Path(self.tmp.name)/'test.db'
-        self.config=Config(self.path,{'ENABLE_EXTERNAL_CALLS':'1','REQUIRE_TOPIC_IMAGE':'0'})
+        self.config=Config(self.path,{'ENABLE_EXTERNAL_CALLS':'1','REQUIRE_TOPIC_IMAGE':'0','CANDIDATE_GENERATION_MODE':'model','USE_NEWS_REFERENCE':'1'})
         self.store=Store(self.path);self.store.migrate()
         self.claude=FakeClaude();self.media=FakeMedia();self.telegram=FakeTelegram();self.instagram=FakeInstagram()
         self.engine=Engine(self.config,self.claude,self.media,self.telegram,self.instagram,lambda:NEWS)
@@ -79,11 +82,12 @@ class SystemTest(unittest.TestCase):
     def q(self,sql,args=()):
         with self.store.tx() as c:return [dict(r) for r in c.execute(sql,args)]
     def candidates(self):
+        self.engine.config=Config(self.path,dict(self.engine.config.env,CANDIDATE_GENERATION_MODE='model',USE_NEWS_REFERENCE='1'))
         self.store.schedule();self.assertTrue(self.engine.run_one())
         return self.q('SELECT id FROM candidates ORDER BY position')[0]['id']
     def preview(self):
         cid=self.candidates();rid=self.store.select(cid)
-        self.assertTrue(self.engine.run_one());self.assertTrue(self.engine.run_one())
+        self.assertTrue(self.engine.run_one());self.store.accept_draft(rid,1);self.assertTrue(self.engine.run_one())
         self.assertEqual(self.store.row(rid)['status'],'preview_ready')
         return rid
     def approve(self):
@@ -128,18 +132,18 @@ class SystemTest(unittest.TestCase):
         self.engine.deliver_one();self.assertEqual(self.claude.calls,calls)
     def test_partial_render_failure_resumes_saved_files(self):
         cid=self.candidates();rid=self.store.select(cid);self.engine.run_one()
-        self.media.fail=True;self.engine.run_one()
+        self.store.accept_draft(rid,1);self.media.fail=True;self.engine.run_one()
         self.assertEqual(self.media.renders,1);self.assertEqual(len(self.q('SELECT * FROM assets')),1)
         job=self.q("SELECT id FROM jobs WHERE kind='render'")[0]['id']
         self.media.fail=False;resume(self.store,job);self.engine.run_one()
         self.assertEqual(self.media.renders,1);self.assertEqual(self.claude.calls,2)
         self.assertEqual(self.store.row(rid)['status'],'preview_ready')
     def test_paid_unknown_is_not_retryable(self):
-        self.claude.fail=True;self.store.schedule();self.engine.run_one()
-        job=self.q('SELECT * FROM jobs')[0]
+        cid=self.candidates();self.store.select(cid);self.claude.fail=True;self.engine.run_one()
+        job=self.q("SELECT * FROM jobs WHERE kind='draft'")[0]
         self.assertEqual(job['state'],'uncertain')
         with self.assertRaises(ValueError):resume(self.store,job['id'])
-        self.assertFalse(self.engine.run_one());self.assertEqual(self.claude.calls,1)
+        self.assertFalse(self.engine.run_one());self.assertEqual(self.claude.calls,2)
         self.assertNotIn('DO_NOT_EXPOSE_SECRET',json.dumps(self.q('SELECT * FROM events')))
     def test_unknown_publish_is_never_replayed(self):
         rid=self.approve();self.instagram.active=True;self.instagram.fail=True;self.engine.run_one()
@@ -164,20 +168,23 @@ class SystemTest(unittest.TestCase):
         rid=self.approve()
         with self.assertRaises(ValueError):self.store.revise(rid,'수정')
         self.assertEqual(self.store.row(rid)['status'],'approved')
-    def test_missing_news_does_not_spend(self):
-        self.engine.news=lambda:[];self.store.schedule();self.engine.run_one()
+    def test_missing_news_still_generates_three(self):
+        self.engine.news=lambda:[];self.engine.config=Config(self.path,{'ENABLE_EXTERNAL_CALLS':'1'})
+        self.store.schedule();self.engine.run_one()
         self.assertEqual(self.claude.calls,0)
-        self.assertEqual(self.q('SELECT state FROM jobs')[0]['state'],'failed')
+        self.assertEqual(len(self.q('SELECT * FROM candidates')),3)
+        self.assertEqual(self.q('SELECT state FROM jobs')[0]['state'],'succeeded')
     def test_daily_call_budget(self):
-        self.engine.config=Config(self.path,{'ENABLE_EXTERNAL_CALLS':'1','MAX_CLAUDE_CALLS_PER_DAY':'0'})
+        self.engine.config=Config(self.path,{'ENABLE_EXTERNAL_CALLS':'1','MAX_CLAUDE_CALLS_PER_DAY':'0','CANDIDATE_GENERATION_MODE':'model'})
         self.store.schedule();self.engine.run_one();self.assertEqual(self.claude.calls,0)
-        self.assertEqual(self.q('SELECT state FROM jobs')[0]['state'],'waiting')
+        self.assertEqual(self.q('SELECT state FROM jobs')[0]['state'],'succeeded')
+        self.assertEqual(len(self.q('SELECT * FROM candidates')),3)
     def test_disabled_worker_does_nothing(self):
         self.engine.config=Config(self.path,{})
         self.store.schedule();self.assertFalse(self.engine.run_one());self.assertEqual(self.claude.calls,0)
     def test_topic_image_manual_fallback(self):
         self.engine.config=Config(self.path,{'ENABLE_EXTERNAL_CALLS':'1'})
-        cid=self.candidates();self.store.select(cid);self.engine.run_one();self.engine.run_one()
+        cid=self.candidates();rid=self.store.select(cid);self.engine.run_one();self.store.accept_draft(rid,1);self.engine.run_one()
         self.assertEqual(self.q("SELECT state FROM jobs WHERE kind='render'")[0]['state'],'waiting')
         self.assertEqual(self.media.renders,0)
     def test_daily_regeneration_limit(self):

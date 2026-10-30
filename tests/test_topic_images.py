@@ -31,6 +31,7 @@ class TopicImagesTest(unittest.TestCase):
         original=self.media.render;captured=[]
         def render(d,r,v):captured.append(d);return original(d,r,v)
         self.media.render=render
+        self.store.accept_draft(rid,1)
         with patch('bureau.images.checked_photo',side_effect=lambda p:p):self.engine.run_one()
         self.assertEqual(captured[0]['slides'][1]['background_image'],'desk')
         self.assertEqual(captured[0]['slides'][2]['background_image'],'door')

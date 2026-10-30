@@ -49,7 +49,7 @@ def readiness(config):
                     if table in tables:
                         backlog[table]=dict(c.execute(f'SELECT state,count(*) FROM {table} GROUP BY state'))
         except sqlite3.Error: issues.append('database_unreadable')
-    if schema<3: issues.append('migration_required')
+    if schema<4: issues.append('migration_required')
     if integrity!='ok': issues.append('database_integrity_unverified')
     if any(backlog.get(table,{}).get(state,0) for table,states in [('jobs',('running','uncertain')),('outbox',('sending','uncertain'))] for state in states):
         issues.append('inflight_or_uncertain_work_requires_inspection')

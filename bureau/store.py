@@ -51,6 +51,7 @@ class Store:
                 'CREATE TABLE IF NOT EXISTS quality_reviews(selection_id INTEGER NOT NULL, revision INTEGER NOT NULL, issues TEXT NOT NULL, accepted_at TEXT, PRIMARY KEY(selection_id,revision))',
                 'CREATE TABLE IF NOT EXISTS image_library(sha256 TEXT PRIMARY KEY, payload TEXT NOT NULL, tags TEXT NOT NULL, created_at TEXT NOT NULL)',
                 'CREATE TABLE IF NOT EXISTS image_inputs(selection_id INTEGER NOT NULL, revision INTEGER NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(selection_id,revision))',
+                'CREATE TABLE IF NOT EXISTS conversations(user_key TEXT PRIMARY KEY, selection_id INTEGER NOT NULL, revision INTEGER NOT NULL, mode TEXT NOT NULL)',
                 'CREATE TABLE IF NOT EXISTS requests(request_key TEXT PRIMARY KEY, result TEXT NOT NULL)',
                 'CREATE TABLE IF NOT EXISTS schema_versions(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)',
                 '''CREATE TABLE IF NOT EXISTS batches(id INTEGER PRIMARY KEY, day TEXT NOT NULL, generation INTEGER NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(day,generation))''',
@@ -70,6 +71,7 @@ class Store:
             c.execute('INSERT OR IGNORE INTO schema_versions VALUES(1,?)', (now(),))
             c.execute('INSERT OR IGNORE INTO schema_versions VALUES(2,?)', (now(),))
             c.execute('INSERT OR IGNORE INTO schema_versions VALUES(3,?)', (now(),))
+            c.execute('INSERT OR IGNORE INTO schema_versions VALUES(4,?)', (now(),))
 
     @staticmethod
     def event(c, subject, action, detail=''):
@@ -84,7 +86,8 @@ class Store:
     def notify(c, key, payload):
         c.execute('INSERT OR IGNORE INTO outbox(delivery_key,payload,created_at) VALUES(?,?,?)',(key,json.dumps(payload,ensure_ascii=False),now()))
 
-    def schedule(self, day=None, regenerate=False, maximum=2, request_key=None):
+    def schedule(self, day=None, regenerate=False, maximum=2, request_key=None, source="manual"):
+        if source not in ('manual','vm_timer','telegram'): raise ValueError('Unknown schedule source')
         day = day or kst_day()
         with self.tx() as c:
             if request_key:
@@ -96,9 +99,10 @@ class Store:
                 generation = c.execute('SELECT COALESCE(MAX(generation),0)+1 FROM batches WHERE day=?',(day,)).fetchone()[0]
                 if generation > maximum:
                     raise ValueError('Daily candidate regeneration limit reached')
-            c.execute("INSERT OR IGNORE INTO batches(day,generation,status,created_at) VALUES(?,?,'queued',?)",(day,generation,now()))
+            inserted=c.execute("INSERT OR IGNORE INTO batches(day,generation,status,created_at) VALUES(?,?,'queued',?)",(day,generation,now())).rowcount
             batch = c.execute('SELECT id FROM batches WHERE day=? AND generation=?',(day,generation)).fetchone()[0]
             result=self.enqueue(c,f'candidates:{day}:{generation}','candidates',{'batch_id':batch})
+            if inserted: self.event(c,batch,'scheduled',json.dumps({'source':source,'day':day,'generation':generation,'timezone':'Asia/Seoul'}))
             if request_key: c.execute('INSERT INTO requests VALUES(?,?)',(request_key,str(result)))
             return result
 
@@ -132,7 +136,7 @@ class Store:
             payload=json.loads(row['payload'])
             prior=c.execute('''SELECT s.id FROM selections s JOIN candidates x ON x.id=s.candidate_id
                 WHERE json_extract(x.payload,'$.source_url')=? ORDER BY s.id LIMIT 1''',
-                (payload['source_url'],)).fetchone()
+                (payload.get('source_url'),)).fetchone()
             if prior:
                 self.event(c,prior[0],'duplicate_source_skipped',str(candidate_id))
                 return prior[0]
@@ -150,7 +154,7 @@ class Store:
                 old=c.execute('SELECT result FROM requests WHERE request_key=?',(request_key,)).fetchone()
                 if old: return int(old[0])
             r=c.execute('SELECT * FROM selections WHERE id=?',(rid,)).fetchone()
-            if not r or r['status'] not in ('selected','preview_ready','draft_ready','revision_requested','draft_review','draft_invalid'):
+            if not r or r['status'] not in ('selected','preview_ready','draft_ready','revision_requested','draft_review','draft_invalid','planning_review'):
                 raise ValueError('Content cannot be revised in current state')
             if r['revision']>=maximum+1:
                 raise ValueError('Revision limit reached')
@@ -160,24 +164,72 @@ class Store:
                 c.execute('INSERT OR IGNORE INTO draft_versions VALUES(?,?,?,?)',(rid,r['revision'],r['draft_json'],now()))
             c.execute("UPDATE selections SET revision=?,status='revision_requested',revision_note=?,approved_revision=NULL,reviewed_revision=NULL,draft_json=NULL,image_paths=NULL WHERE id=?",(rev,note,rid))
             self.enqueue(c,f'draft:{rid}:{rev}','draft',{'id':rid,'revision':rev})
-            self.event(c,rid,'revision_requested',note)
+            self.event(c,rid,'revision_requested','editor note stored on selection')
             if request_key: c.execute('INSERT INTO requests VALUES(?,?)',(request_key,str(rev)))
             return rev
 
     def accept_draft(self, rid, revision):
         with self.tx() as c:
             r=c.execute('SELECT * FROM selections WHERE id=? AND revision=?',(rid,revision)).fetchone()
-            if not r: raise ValueError('Unknown draft version')
-            reviewed=c.execute('SELECT accepted_at FROM quality_reviews WHERE selection_id=? AND revision=?',(rid,revision)).fetchone()
-            if reviewed and reviewed[0]: return  # Replayed acceptance is idempotent.
-            if r['status']!='draft_review' or not reviewed: raise ValueError('Draft is not awaiting editorial review')
-            job=c.execute('SELECT state FROM jobs WHERE job_key=?',(f'draft:{rid}:{revision}',)).fetchone()
-            if job and job[0]=='running': raise ValueError('Draft worker is finishing; retry shortly')
+            if not r or r['status'] not in ('planning_review','draft_review'):
+                raise ValueError('Current draft must await planning approval')
             c.execute('UPDATE quality_reviews SET accepted_at=? WHERE selection_id=? AND revision=?',(now(),rid,revision))
             c.execute("UPDATE selections SET status='draft_ready' WHERE id=?",(rid,))
             self.enqueue(c,f'render:{rid}:{revision}','render',{'id':rid,'revision':revision})
             c.execute("UPDATE jobs SET state='succeeded',error_code=NULL WHERE job_key=? AND state='waiting' AND error_code='draft_quality_review'",(f'draft:{rid}:{revision}',))
-            self.event(c,rid,'editorial_accept',str(revision))
+            self.event(c,rid,'planning_approved',str(revision))
+
+    def await_revision(self, user_key, rid, revision, mode):
+        if mode not in ('plan','image'): raise ValueError('Unknown revision mode')
+        with self.tx() as c:
+            r=c.execute('SELECT * FROM selections WHERE id=? AND revision=?',(rid,revision)).fetchone()
+            valid=('draft_ready','preview_ready') if mode=='image' else ('planning_review','draft_review','preview_ready')
+            if not r or r['status'] not in valid: raise ValueError('Stale or unavailable content')
+            c.execute('INSERT OR REPLACE INTO conversations VALUES(?,?,?,?)',(user_key,rid,revision,mode))
+
+    def apply_revision(self, user_key, note, request_key, maximum=3):
+        # Revision CAS + request replay + pending-message consumption share one transaction.
+        if not isinstance(note,str) or not note.strip() or len(note)>1000:
+            raise ValueError('Revision request must contain 1–1000 characters')
+        with self.tx() as c:
+            old=c.execute('SELECT result FROM requests WHERE request_key=?',(request_key,)).fetchone()
+            if old: return int(old[0])
+            pending=c.execute('SELECT * FROM conversations WHERE user_key=?',(user_key,)).fetchone()
+            if not pending: raise ValueError('먼저 기획 수정 또는 이미지 수정 버튼을 선택하세요.')
+            r=c.execute('SELECT * FROM selections WHERE id=?',(pending['selection_id'],)).fetchone()
+            valid=('draft_ready','preview_ready') if pending['mode']=='image' else ('planning_review','draft_review','preview_ready')
+            if not r or r['revision']!=pending['revision'] or r['status'] not in valid:
+                raise ValueError('수정 대상 버전이 변경되었습니다. 최신 버튼을 선택하세요.')
+            if r['revision']>=maximum+1: raise ValueError('Revision limit reached')
+            rev=r['revision']+1;rid=r['id']
+            if pending['mode']=='image':
+                # Retain approved text; invalidate images and final approval only.
+                draft=json.loads(r['draft_json'])
+                # Deterministic image queries accept natural-language subject instructions.
+                # Operators still review and attach real photos through existing library flow.
+                draft['image_queries']={'content':note[:100], 'resolution_extra':note[:100]+' alternate scene'}
+                draft['image_queries']['resolution_extra']=draft['image_queries']['resolution_extra'][:100]
+                c.execute('INSERT INTO draft_versions VALUES(?,?,?,?)',(rid,rev,json.dumps(draft,ensure_ascii=False),now()))
+                c.execute("UPDATE selections SET revision=?,status='draft_ready',draft_json=?,revision_note=?,approved_revision=NULL,reviewed_revision=NULL,image_paths=NULL WHERE id=?",(rev,json.dumps(draft,ensure_ascii=False),note,rid))
+                self.enqueue(c,f'render:{rid}:{rev}','render',{'id':rid,'revision':rev})
+            else:
+                c.execute("UPDATE selections SET revision=?,status='revision_requested',revision_note=?,draft_json=NULL,image_paths=NULL,approved_revision=NULL,reviewed_revision=NULL WHERE id=?",(rev,note,rid))
+                self.enqueue(c,f'draft:{rid}:{rev}','draft',{'id':rid,'revision':rev})
+            c.execute('DELETE FROM conversations WHERE user_key=?',(user_key,))
+            c.execute('INSERT INTO requests VALUES(?,?)',(request_key,str(rev)))
+            self.event(c,rid,'image_revision' if pending['mode']=='image' else 'planning_revision',str(rev))
+            return rev
+
+    def return_candidates(self, rid, revision):
+        with self.tx() as c:
+            r=c.execute('SELECT * FROM selections WHERE id=? AND revision=?',(rid,revision)).fetchone()
+            if not r or r['status'] not in ('planning_review','draft_review'):
+                raise ValueError('Only a current plan may return to candidates')
+            batch=c.execute("SELECT b.id FROM candidates x JOIN batches b ON b.id=x.batch_id WHERE x.id=? AND b.day=? AND b.status='ready'",(r['candidate_id'],kst_day())).fetchone()
+            if not batch: raise ValueError('Candidate batch expired')
+            c.execute("UPDATE selections SET status='rejected' WHERE id=?",(rid,))
+            self.event(c,rid,'return_candidates',str(revision))
+            return batch[0]
 
     def review(self, rid, revision):
         with self.tx() as c:
@@ -187,12 +239,15 @@ class Store:
             c.execute('UPDATE selections SET reviewed_revision=? WHERE id=?',(revision,rid))
             self.event(c,rid,'human_review',str(revision))
 
-    def decide(self, rid, revision, approve):
+    def decide(self, rid, revision, approve, confirm_review=False):
         with self.tx() as c:
             r=c.execute('SELECT * FROM selections WHERE id=?',(rid,)).fetchone()
             if not r or r['revision']!=revision or r['status']!='preview_ready':
                 raise ValueError('Already processed or stale preview')
-            if approve and r['reviewed_revision']!=revision:
+            if approve and confirm_review:
+                c.execute('UPDATE selections SET reviewed_revision=? WHERE id=?',(revision,rid))
+                self.event(c,rid,'human_review',str(revision))
+            if approve and not confirm_review and r['reviewed_revision']!=revision:
                 raise ValueError('Source, image license, faces and text review required first: /review ID VERSION')
             c.execute('UPDATE selections SET status=?,approved_revision=? WHERE id=?',('approved' if approve else 'rejected', revision if approve else None,rid))
             if approve:

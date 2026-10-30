@@ -1,12 +1,12 @@
 import json
 from .config import Config
 from .store import Store, kst_day, now
-from .engine import candidate_message, preview_message
+from .engine import candidate_message, preview_message, plan_message
 
 
 def build_app(config):
     from telegram import InlineKeyboardMarkup
-    from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler
+    from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters
     config.require_external()
     e=config.env; store=Store(config.db)
     from .preflight import telegram_settings
@@ -21,6 +21,11 @@ def build_app(config):
             store.notify(c,f'update:{update.update_id}:{suffix}',payload)
 
     async def command(update,context):
+        if update.message.text.split()[0].split('@')[0]=='/whoami':
+            # Same listener; no second getUpdates consumer. Private chat only.
+            if update.effective_chat and update.effective_user and update.effective_chat.type=='private' and str(update.effective_chat.id)==e['TELEGRAM_CHAT_ID']:
+                await update.message.reply_text('본인 Telegram 사용자 ID: '+str(update.effective_user.id))
+            return
         if not authorized(update): return
         name=update.message.text.split()[0].split('@')[0][1:]
         try:
@@ -31,7 +36,7 @@ def build_app(config):
                     b=c.execute("SELECT id FROM batches WHERE day=? AND status='ready' ORDER BY generation DESC LIMIT 1",(kst_day(),)).fetchone()
                     payload=candidate_message(c,b[0]) if b else {'text':'오늘 저장된 후보가 없습니다. 예약 작업 또는 관리자 상태를 확인하세요.'}
             elif name=='newcandidates':
-                job=store.schedule(regenerate=True,maximum=config.integer('MAX_CANDIDATE_REGENERATIONS',2),request_key=f'newcandidates:{update.update_id}')
+                job=store.schedule(regenerate=True,maximum=config.integer('MAX_CANDIDATE_REGENERATIONS',2),request_key=f'newcandidates:{update.update_id}',source='telegram')
                 payload={'text':f'새 후보 생성 요청 접수: 작업 {job}. 일일 호출 상한이 적용됩니다.'}
             elif name=='images':
                 rid=int(context.args[0]); query=' '.join(context.args[1:]); store.row(rid)
@@ -61,7 +66,7 @@ def build_app(config):
                     a=c.execute('SELECT payload FROM assets WHERE selection_id=? AND revision=?',(rid,version)).fetchone()
                 if a:
                     media=json.loads(a[0]); queue(update,{'text':f'미리보기 {rid} v{version}','files':media['files'],'sha256':media['sha256']},'images')
-                payload=preview_message(rid,r['revision']) if r['status']=='preview_ready' and version==r['revision'] else {'text':f'게시물 {rid}: {r["status"]}. 기존 승인 기록은 유지됩니다.'}
+                payload=plan_message(rid,r['revision'],json.loads(r['draft_json'])) if r['status'] in ('planning_review','draft_review') and version==r['revision'] else preview_message(rid,r['revision']) if r['status']=='preview_ready' and version==r['revision'] else {'text':f'게시물 {rid}: {r["status"]}. 기존 승인 기록은 유지됩니다.'}
                 if a and r['status']=='preview_ready' and version==r['revision']:
                     payload['after_delivery']=f'update:{update.update_id}:images'
             elif name=='revise':
@@ -88,7 +93,7 @@ def build_app(config):
             else: return
             queue(update,payload)
         except (ValueError,IndexError,TypeError) as exc:
-            queue(update,{'text':'요청을 처리하지 못했습니다: '+str(exc)[:500]})
+            queue(update,{'text':'현재 단계·버전·명령 인수를 확인하세요. 요청을 처리하지 못했습니다.'})
 
     async def callback(update,context):
         query=update.callback_query
@@ -98,7 +103,23 @@ def build_app(config):
         try:
             parts=query.data.split(':'); action=parts[0]
             if action=='candidate':
-                rid=store.select(int(parts[1])); text=f'선택 결과: {rid}. 새 소재는 원고 작업을 접수하고, 같은 기사 URL의 기존 콘텐츠는 재사용합니다. /preview {rid}'
+                rid=store.select(int(parts[1])); text=f'후보 선택 접수: {rid}. 기획안을 생성한 뒤 승인 버튼을 보내드립니다. /preview {rid}'
+            elif action=='batchregen':
+                # Batch-bound request key makes concurrent/replayed clicks idempotent.
+                with store.tx() as c:
+                    batch=c.execute("SELECT id FROM batches WHERE id=? AND day=? AND status='ready'",(int(parts[1]),kst_day())).fetchone()
+                    if not batch: raise ValueError('후보가 만료되었거나 준비 중입니다.')
+                jid=store.schedule(regenerate=True,maximum=config.integer('MAX_CANDIDATE_REGENERATIONS',2),request_key=f'batchregen:{parts[1]}',source='telegram')
+                text=f'후보 다시 생성 접수: 작업 {jid}'
+            elif action=='planapprove':
+                store.accept_draft(int(parts[1]),int(parts[2])); text='기획 승인 완료. 이미지 렌더링을 접수했습니다.'
+            elif action in ('planedit','imageedit'):
+                store.await_revision(str(update.effective_user.id),int(parts[1]),int(parts[2]),'image' if action=='imageedit' else 'plan')
+                text='수정할 내용을 자연어로 보내주세요 (1–1000자). 이미지 수정은 사진 소재 요청이며 자동 검색·검증 후 새 이미지를 준비합니다. /cancelrevision 으로 입력을 취소합니다.'
+            elif action=='back':
+                batch=store.return_candidates(int(parts[1]),int(parts[2]))
+                with store.tx() as c: payload=candidate_message(c,batch)
+                queue(update,payload); await query.answer('후보를 다시 선택하세요'); return
             elif action=='batchreject':
                 with store.tx() as c:
                     c.execute("UPDATE batches SET status='rejected' WHERE id=? AND day=? AND status='ready'",(int(parts[1]),kst_day()))
@@ -110,22 +131,38 @@ def build_app(config):
                     r=store.row(rid)
                     if r['revision']!=rev or r['status']!='preview_ready': raise ValueError('Stale preview')
                     store.revise(rid,'기존 출처와 사실/창작 구분을 유지하며 문장과 구성을 새로 작성',config.integer('MAX_CONTENT_REVISIONS',3))
-                else: store.decide(rid,rev,action=='approve')
+                else: store.decide(rid,rev,action=='approve',confirm_review=action=='approve')
                 text='심의 처리를 저장했습니다. 실제 게시에는 서버의 별도 게시 허용 설정이 필요합니다.'
             else: raise ValueError('Unknown callback')
             await query.answer('접수 완료')
             queue(update,{'text':text})
         except (ValueError,IndexError,TypeError) as exc:
-            await query.answer('처리 불가: '+str(exc)[:150],show_alert=True)
+            await query.answer('현재 단계 또는 버전에서 처리할 수 없는 요청입니다.',show_alert=True)
+
+    async def revision_message(update,context):
+        if not authorized(update): return
+        try:
+            rev=store.apply_revision(str(update.effective_user.id),update.message.text,
+                                     f'natural-revision:{update.update_id}',config.integer('MAX_CONTENT_REVISIONS',3))
+            queue(update,{'text':f'수정 요청을 저장했습니다. 새 버전 v{rev}을 준비합니다.'})
+        except (ValueError,TypeError):
+            queue(update,{'text':'수정 요청을 적용하지 못했습니다. 현재 기획 수정/이미지 수정 버튼을 선택하고 1–1000자로 보내주세요.'})
+
+    async def cancel_revision(update,context):
+        if not authorized(update): return
+        with store.tx() as c: c.execute('DELETE FROM conversations WHERE user_key=?',(str(update.effective_user.id),))
+        queue(update,{'text':'수정 입력 대기를 취소했습니다.'})
 
     async def error(update,context):
         # Do not log HTTP request objects or provider exception strings (tokens in URLs).
         if update and authorized(update): queue(update,{'text':'처리 오류가 발생했습니다. /status 확인 후 관리자에게 작업 ID를 전달하세요.'})
 
     app=ApplicationBuilder().token(e['TELEGRAM_BOT_TOKEN']).build()
-    for name in ('start','candidates','newcandidates','images','status','preview','revise','review','acceptdraft','retry','resend'):
+    for name in ('whoami','start','candidates','newcandidates','images','status','preview','revise','review','acceptdraft','retry','resend'):
         app.add_handler(CommandHandler(name,command))
-    app.add_handler(CallbackQueryHandler(callback,pattern=r'^(candidate|batchreject|approve|reject|regenerate):'))
+    app.add_handler(CallbackQueryHandler(callback,pattern=r'^(candidate|batchregen|batchreject|planapprove|planedit|imageedit|back|approve|reject|regenerate):'))
+    app.add_handler(CommandHandler('cancelrevision',cancel_revision))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,revision_message))
     app.add_error_handler(error)
     return app
 
