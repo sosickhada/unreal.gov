@@ -259,7 +259,12 @@ class Engine:
         if not self.instagram.enabled():
             with self.store.tx() as c:
                 c.execute("UPDATE selections SET status='publish_waiting' WHERE id=?",(p['id'],))
-            raise Waiting('Instagram publishing disabled or unconfigured')
+            missing=self.instagram.missing_settings() if hasattr(self.instagram,'missing_settings') else []
+            detail='Instagram 게시 대기: INSTAGRAM_PUBLISH_ENABLED 및 공개 이미지 허용 설정을 확인하세요.'
+            if missing: detail+=' 누락 설정: '+', '.join(missing)
+            with self.store.tx() as c:
+                self.store.notify(c,f'instagram-setup:{p["id"]}:{p["revision"]}',{'text':detail+' 설정 완료 후 /retry '+str(job['id'])+' 로 기존 승인 작업을 재개하세요. 새 승인을 임의 생성하지 않습니다.'})
+            raise Waiting('Instagram publishing disabled or unconfigured','instagram_setup_required')
         if self.config.env.get('RENDER_DIR') and self.config.env.get('ENABLE_PUBLIC_MEDIA')!='1':
             raise Waiting('Separate permission to expose public media required','public_media_disabled')
         with self.store.tx() as c:

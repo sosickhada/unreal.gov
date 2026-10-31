@@ -27,3 +27,6 @@ public/images/
 
 # Safe template is intentionally versionable
 !.env.example
+
+# Runtime polling lock
+telegram-polling.lock

@@ -185,6 +185,14 @@ def main():
     except Exception:
         raise SystemExit('운영 환경파일을 읽지 못했습니다. 비밀값을 출력하지 않고 중단합니다.') from None
     configure_logging(config.env)
+    # Retain an exclusive process lock for the full polling lifetime.
+    import fcntl
+    polling_lock=open(config.db.parent/'telegram-polling.lock','a')
+    try:
+        fcntl.flock(polling_lock.fileno(),fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        polling_lock.close()
+        raise SystemExit('Telegram polling already active for this database') from None
     try:
         build_app(config).run_polling(drop_pending_updates=False,bootstrap_retries=0)
     except ConfigurationError as exc:

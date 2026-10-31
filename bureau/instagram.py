@@ -8,13 +8,21 @@ class Instagram:
     def __init__(self,config,http=requests):
         self.config=config; self.http=http
 
+    REQUIRED = ('META_ACCESS_TOKEN','META_APP_ID','META_APP_ACCESS_TOKEN',
+                'INSTAGRAM_ACCOUNT_ID','META_PAGE_ID','META_GRAPH_VERSION')
+
+    def missing_settings(self):
+        return [key for key in self.REQUIRED if not self.config.env.get(key)]
+
     def enabled(self):
         e=self.config.env
-        return e.get('ENABLE_EXTERNAL_CALLS')=='1' and e.get('INSTAGRAM_PUBLISH_ENABLED')=='1' and all(e.get(k) for k in ('META_ACCESS_TOKEN','META_APP_ID','META_APP_ACCESS_TOKEN','INSTAGRAM_ACCOUNT_ID','META_PAGE_ID','META_GRAPH_VERSION'))
+        return e.get('ENABLE_EXTERNAL_CALLS')=='1' and e.get('INSTAGRAM_PUBLISH_ENABLED')=='1' and not self.missing_settings()
 
     def request(self,method,path,**params):
         self.config.require_external()
-        if not self.enabled(): raise ExternalError('Instagram disabled')
+        if self.missing_settings(): raise ExternalError('Missing Meta settings: '+', '.join(self.missing_settings()))
+        if method not in ('GET','POST'): raise ExternalError('Unsupported Meta method')
+        if method!='GET' and not self.enabled(): raise ExternalError('Instagram publishing disabled')
         version=self.config.env['META_GRAPH_VERSION']
         if not re.fullmatch(r'v\d+\.\d+',version): raise ExternalError('Invalid configured Graph version')
         if not re.fullmatch(r'[A-Za-z0-9_/]+',path): raise ExternalError('Invalid Graph path')
@@ -52,6 +60,8 @@ class Instagram:
         return self.request('POST',self.config.env['INSTAGRAM_ACCOUNT_ID']+'/media',image_url=url,is_carousel_item='true')
 
     def carousel(self,children,caption):
+        if not 2<=len(children)<=10 or len(set(children))!=len(children):
+            raise ExternalError('Carousel requires 2–10 distinct child containers')
         return self.request('POST',self.config.env['INSTAGRAM_ACCOUNT_ID']+'/media',media_type='CAROUSEL',children=','.join(children),caption=caption)
 
     def ready(self,container):

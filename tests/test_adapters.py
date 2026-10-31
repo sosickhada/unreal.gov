@@ -29,6 +29,28 @@ class AdapterTests(unittest.TestCase):
         self.assertTrue(ig.preflight()['valid'])
         ig.request=Mock(return_value={'data':{'is_valid':True,'app_id':'wrong','scopes':[]}})
         with self.assertRaises(ExternalError):ig.preflight()
+    def test_meta_read_only_check_does_not_enable_writes(self):
+        http=Mock();http.request.return_value.json.return_value={'id':'123'}
+        ig=Instagram(self.config(INSTAGRAM_PUBLISH_ENABLED='0'),http)
+        self.assertEqual(ig.request('GET','123',fields='id'),{'id':'123'})
+        with self.assertRaises(ExternalError):ig.child('https://media.example/a.jpg')
+        self.assertEqual(http.request.call_count,1)
+
+    def test_meta_missing_settings_report_names_only(self):
+        ig=Instagram(self.config(META_ACCESS_TOKEN=''))
+        self.assertEqual(ig.missing_settings(),['META_ACCESS_TOKEN'])
+        self.assertFalse(ig.enabled())
+
+    def test_meta_carousel_payload_and_invalid_children(self):
+        http=Mock();http.request.return_value.json.return_value={'id':'container'}
+        ig=Instagram(self.config(),http)
+        ig.carousel(['child1','child2'],'caption')
+        self.assertEqual(http.request.call_args.kwargs['data'],
+                         {'media_type':'CAROUSEL','children':'child1,child2','caption':'caption'})
+        for children in ([],['one'],['one','one'],[str(i) for i in range(11)]):
+            with self.assertRaises(ExternalError):ig.carousel(children,'caption')
+        self.assertEqual(http.request.call_count,1)
+
     def test_meta_disallows_personal_account(self):
         ig=Instagram(self.config());ig.request=Mock(side_effect=[{'data':{'is_valid':True,'app_id':'42','scopes':['instagram_basic','instagram_content_publish','pages_read_engagement']}},{'instagram_business_account':{'id':'123'}},{'id':'123','account_type':'PERSONAL'}])
         with self.assertRaises(ExternalError):ig.preflight()

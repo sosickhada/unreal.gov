@@ -21,7 +21,7 @@ def resume(store,jid):
 def main():
     p=argparse.ArgumentParser(description='비현실문제부: all external calls disabled by default')
     sub=p.add_subparsers(dest='command',required=True)
-    sub.add_parser('migrate'); sub.add_parser('health'); sub.add_parser('schedule');sub.add_parser('doctor');sub.add_parser('backup')
+    sub.add_parser('instagram-check');sub.add_parser('migrate'); sub.add_parser('health'); sub.add_parser('schedule');sub.add_parser('doctor');sub.add_parser('backup')
     worker=sub.add_parser('worker'); worker.add_argument('--once',action='store_true')
     repair=sub.add_parser('resume-photo');repair.add_argument('job_id',type=int)
     r=sub.add_parser('resume');r.add_argument('job_id',type=int)
@@ -32,7 +32,15 @@ def main():
     search=sub.add_parser('image-search');search.add_argument('query')
     download=sub.add_parser('download-image');download.add_argument('query');download.add_argument('photo_id',type=int);download.add_argument('destination')
     args=p.parse_args(); config=Config.load(); store=Store(config.db)
-    if args.command in ('doctor','backup'):
+    if args.command=='instagram-check':
+        from .instagram import Instagram
+        from .adapters import ExternalError
+        ig=Instagram(config)
+        if ig.missing_settings():
+            print(json.dumps({'connected':False,'missing_settings':ig.missing_settings(),'publishing_enabled':ig.enabled()}));return
+        try: print(json.dumps(ig.preflight()))
+        except (ExternalError,RuntimeError) as exc: print(json.dumps({'connected':False,'error':str(exc)}));raise SystemExit(1)
+    elif args.command in ('doctor','backup'):
         from .operations import readiness,backup_database
         if args.command=='backup': print(backup_database(config.db,config.db.parent/'data'/'backups'))
         else:
