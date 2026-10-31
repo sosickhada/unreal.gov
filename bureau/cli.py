@@ -38,7 +38,7 @@ def main():
         ig=Instagram(config)
         if ig.missing_settings():
             print(json.dumps({'connected':False,'missing_settings':ig.missing_settings(),'publishing_enabled':ig.enabled()}));return
-        try: print(json.dumps(ig.preflight()))
+        try: print(json.dumps(ig.connection_status()))
         except (ExternalError,RuntimeError) as exc: print(json.dumps({'connected':False,'error':str(exc)}));raise SystemExit(1)
     elif args.command in ('doctor','backup'):
         from .operations import readiness,backup_database

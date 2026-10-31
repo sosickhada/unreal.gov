@@ -43,22 +43,25 @@ class Instagram:
             raise ExternalError('Instagram Login user_id does not match IG_ACCOUNT_ID')
         if profile.get('account_type') not in ('BUSINESS','MEDIA_CREATOR'):
             raise ExternalError('Professional account required')
-        # Permissions must come from the provider, never infer them from profile access.
-        permissions=self.request('GET',account+'/permissions')
-        granted={r.get('permission') for r in permissions.get('data',[]) if r.get('status')=='granted'}
-        required={'instagram_business_basic','instagram_business_content_publish'}
-        if not required<=granted:
-            raise ExternalError('Instagram Login permissions unverified or missing')
-        expiry=e.get('IG_TOKEN_EXPIRES_AT','')
-        if not expiry or not expiry.isdigit():
-            raise ExternalError('IG_TOKEN_EXPIRES_AT requires verified token expiry Unix timestamp')
-        if int(expiry)<=time.time()+600:raise ExternalError('Instagram token expires too soon')
-        limits=self.request('GET',account+'/content_publishing_limit',fields='quota_usage,config')
-        for row in limits.get('data',[]):
-            cap=row.get('config',{}).get('quota_total')
-            if cap is not None and row.get('quota_usage',0)>=cap:raise ExternalError('Publishing quota reached')
-        return {'valid':True,'account_id':account,'username':profile.get('username'),
-                'permissions':sorted(granted),'expires_at':int(expiry)}
+        raise ExternalError('Instagram Login scopes are unverified: inspect token issuance grants or Meta Access Token Debugger; unsupported permissions edge is not queried')
+
+    def connection_status(self):
+        """Read-only connectivity is separate from authorization to publish."""
+        import time
+        profile=self.request('GET','me',fields='user_id,username,account_type')
+        account=str(profile.get('user_id',''))
+        if account!=self.config.env['IG_ACCOUNT_ID']:
+            raise ExternalError('Instagram Login user_id does not match IG_ACCOUNT_ID')
+        expiry=self.config.env.get('IG_TOKEN_EXPIRES_AT','')
+        return {'authenticated':True,'account_id':account,'username':profile.get('username'),
+                'account_type':profile.get('account_type'),
+                'permissions':{'instagram_business_basic':'profile_access_confirmed; grant_list_unverified',
+                               'instagram_business_content_publish':'unverified'},
+                'app_mode':'unverified','tester_role':'unverified','app_review':'unverified',
+                'expires_at':int(expiry) if expiry.isdigit() else None,
+                'expiry_source':'operator_supplied; not introspected' if expiry.isdigit() else 'unknown',
+                'expired_by_record':int(expiry)<=time.time() if expiry.isdigit() else None,
+                'ready_to_publish':False}
 
     def child(self,url):
         return self.request('POST',self.config.env['IG_ACCOUNT_ID']+'/media',image_url=url,is_carousel_item='true')

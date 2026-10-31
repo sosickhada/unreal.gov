@@ -37,3 +37,33 @@ https://developers.facebook.com/docs/instagram-platform/instagram-api-with-insta
 https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/content-publishing/
 https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/business-login/
 공식 문서 페이지는 이번 조회에서 HTTP 429/접근 실패를 반환했다.
+
+## 마지막 진단 보정
+
+권한 edge 실패 원문은 `Tried accessing nonexisting field (permissions)`이다.
+따라서 이 응답을 게시 권한 거부로 해석하지 않는다. 이 edge를 필수 검사에서 제거했다.
+debug_token 실패는 code 10 `Application does not have permission for this action`이다.
+이를 토큰 만료 또는 게시 권한 부재의 증거로 해석하지 않는다.
+Facebook Login용 진단법을 Instagram Login 사용자 토큰에 그대로 적용하지 않는다.
+현재 로그인 사용자 토큰만으로 앱 모드/테스터 역할/App Review 상태를 확인하지 못했다.
+instagram-check는 인증/권한/만료/앱 상태를 분리하여 미검증을 명시한다.
+실제 게시 preflight는 권한 증거가 없는 동안 명시적으로 차단한다.
+이 차단을 해제할 자동 권한 증거 수집은 아직 구현되지 않았다.
+
+사용자 확인 경로 (Meta UI 버전에 따라 제품/사용 사례 메뉴 위치가 다를 수 있음):
+1. developers.facebook.com/apps → 해당 앱 → Instagram → API setup with Instagram login.
+   새 UI에서는 Use cases → Instagram 관련 사용 사례 → Customize에서 같은 설정을 찾는다.
+   Generate access tokens의 계정이 un_real_korea인지 확인한다.
+2. App roles → Roles에서 본인 관리자/개발자 또는 Instagram Tester 역할을 확인한다.
+   Instagram 설정 → Website permissions → Apps and websites → Tester invites에서 초대를 수락한다.
+3. App Review → Permissions and Features에서 instagram_business_basic 및
+   instagram_business_content_publish의 접근 수준/승인 상태를 확인한다.
+   앱 Dashboard의 Development/Live 상태도 확인한다.
+   계정이 앱 역할 보유자인지와 외부 사용자 대상 여부에 따라 필요한 접근 수준이 다르다.
+4. Meta Tools → Access Token Debugger (https://developers.facebook.com/tools/debug/accesstoken/)
+   에서 토큰을 직접 검사한다. 지원되는 경우 Scopes, Expires, App ID를 확인한다.
+   토큰 자체나 토큰이 포함된 URL을 공유하지 말고 권한명/만료시각/앱 모드/역할만 전달한다.
+   이 도구에서도 검사할 수 없다면 미검증 상태를 유지한다.
+5. 기존 발급 응답이 있으면 실제 permissions 및 expires_in을 확인한다.
+   만료시각은 응답 수신 Unix 시각 + expires_in으로 기록한다. 발급일만으로 60일을 가정하지 않는다.
+   갱신은 유효한 장기 토큰의 조건을 확인한 뒤 수행하며 응답의 expires_in을 저장한다.
