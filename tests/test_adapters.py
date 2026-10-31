@@ -22,13 +22,26 @@ class AdapterTests(unittest.TestCase):
         self.tmp=tempfile.TemporaryDirectory();self.path=Path(self.tmp.name)/'test.db'
     def tearDown(self):self.guard.stop();self.tmp.cleanup()
     def config(self,**extra):
-        e={'ENABLE_EXTERNAL_CALLS':'1','INSTAGRAM_PUBLISH_ENABLED':'1','META_ACCESS_TOKEN':'test-token','META_APP_ID':'42','META_APP_ACCESS_TOKEN':'test-app-token','INSTAGRAM_ACCOUNT_ID':'123','META_PAGE_ID':'456','META_GRAPH_VERSION':'v25.0'}
+        e={'ENABLE_EXTERNAL_CALLS':'1','INSTAGRAM_PUBLISH_ENABLED':'1','IG_ACCESS_TOKEN':'test-token','IG_ACCOUNT_ID':'123','IG_GRAPH_VERSION':'v25.0','IG_TOKEN_EXPIRES_AT':'4102444800'}
         e.update(extra);return Config(self.path,e)
-    def test_meta_preflight_professional_page_scopes_and_expiry(self):
-        ig=Instagram(self.config());ig.request=Mock(side_effect=[{'data':{'is_valid':True,'app_id':'42','scopes':['instagram_basic','instagram_content_publish','pages_read_engagement']}},{'instagram_business_account':{'id':'123'}},{'id':'123','account_type':'BUSINESS'},{'data':[{'quota_usage':1,'config':{'quota_total':100}}]}])
+    def test_instagram_login_preflight(self):
+        ig=Instagram(self.config())
+        ig.request=Mock(side_effect=[{'user_id':'123','username':'test','account_type':'MEDIA_CREATOR'},
+            {'data':[{'permission':p,'status':'granted'} for p in ('instagram_business_basic','instagram_business_content_publish')]},
+            {'data':[{'quota_usage':0,'config':{'quota_total':100}}]}])
         self.assertTrue(ig.preflight()['valid'])
-        ig.request=Mock(return_value={'data':{'is_valid':True,'app_id':'wrong','scopes':[]}})
+        ig.request=Mock(return_value={'user_id':'wrong','account_type':'BUSINESS'})
         with self.assertRaises(ExternalError):ig.preflight()
+
+    def test_instagram_login_requires_scopes_and_verified_expiry(self):
+        profile={'user_id':'123','account_type':'BUSINESS'}
+        perms={'data':[{'permission':p,'status':'granted'} for p in ('instagram_business_basic','instagram_business_content_publish')]}
+        for config,responses in [(self.config(),[profile,{'data':[]}]),
+                                 (self.config(IG_TOKEN_EXPIRES_AT=''),[profile,perms]),
+                                 (self.config(IG_TOKEN_EXPIRES_AT='1'),[profile,perms])]:
+            ig=Instagram(config);ig.request=Mock(side_effect=responses)
+            with self.assertRaises(ExternalError):ig.preflight()
+
     def test_meta_read_only_check_does_not_enable_writes(self):
         http=Mock();http.request.return_value.json.return_value={'id':'123'}
         ig=Instagram(self.config(INSTAGRAM_PUBLISH_ENABLED='0'),http)
@@ -37,8 +50,8 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(http.request.call_count,1)
 
     def test_meta_missing_settings_report_names_only(self):
-        ig=Instagram(self.config(META_ACCESS_TOKEN=''))
-        self.assertEqual(ig.missing_settings(),['META_ACCESS_TOKEN'])
+        ig=Instagram(self.config(IG_ACCESS_TOKEN=''))
+        self.assertEqual(ig.missing_settings(),['IG_ACCESS_TOKEN'])
         self.assertFalse(ig.enabled())
 
     def test_meta_carousel_payload_and_invalid_children(self):
@@ -52,13 +65,14 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(http.request.call_count,1)
 
     def test_meta_disallows_personal_account(self):
-        ig=Instagram(self.config());ig.request=Mock(side_effect=[{'data':{'is_valid':True,'app_id':'42','scopes':['instagram_basic','instagram_content_publish','pages_read_engagement']}},{'instagram_business_account':{'id':'123'}},{'id':'123','account_type':'PERSONAL'}])
+        ig=Instagram(self.config());ig.request=Mock(return_value={'user_id':'123','account_type':'PERSONAL'})
         with self.assertRaises(ExternalError):ig.preflight()
+
     def test_meta_official_host_and_bearer_token_no_query_token(self):
         http=Mock();http.request.return_value.json.return_value={'id':'7'}
         ig=Instagram(self.config(),http);ig.child('https://media.example/a.jpg')
         args,kw=http.request.call_args
-        self.assertEqual(args[1],'https://graph.facebook.com/v25.0/123/media')
+        self.assertEqual(args[1],'https://graph.instagram.com/v25.0/123/media')
         self.assertNotIn('access_token',kw['data']);self.assertEqual(kw['headers']['Authorization'],'Bearer test-token')
     def test_meta_failure_redacts_token(self):
         http=Mock();http.request.side_effect=RuntimeError('SENSITIVE test-token')

@@ -53,7 +53,7 @@ def readiness(config):
     if integrity!='ok': issues.append('database_integrity_unverified')
     if any(backlog.get(table,{}).get(state,0) for table,states in [('jobs',('running','uncertain')),('outbox',('sending','uncertain'))] for state in states):
         issues.append('inflight_or_uncertain_work_requires_inspection')
-    meta=('META_ACCESS_TOKEN','META_APP_ID','META_APP_ACCESS_TOKEN','META_PAGE_ID','INSTAGRAM_ACCOUNT_ID','META_GRAPH_VERSION')
+    meta=('IG_ACCESS_TOKEN','IG_ACCOUNT_ID','IG_GRAPH_VERSION','IG_TOKEN_EXPIRES_AT')
     return {'ready_for_worker':not issues,'issues':issues,'configuration_errors':configuration_errors,'local_provider_checks':checks,'missing_settings':missing,'schema_version':schema,'integrity':integrity,'backlog':backlog,
             'external_calls_enabled':e.get('ENABLE_EXTERNAL_CALLS')=='1','public_media_enabled':e.get('ENABLE_PUBLIC_MEDIA')=='1',
             'instagram_enabled':e.get('INSTAGRAM_PUBLISH_ENABLED')=='1','missing_instagram_settings':[key for key in meta if not e.get(key)],
