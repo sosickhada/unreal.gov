@@ -23,6 +23,7 @@ def main():
     sub=p.add_subparsers(dest='command',required=True)
     sub.add_parser('migrate'); sub.add_parser('health'); sub.add_parser('schedule');sub.add_parser('doctor');sub.add_parser('backup')
     worker=sub.add_parser('worker'); worker.add_argument('--once',action='store_true')
+    repair=sub.add_parser('resume-photo');repair.add_argument('job_id',type=int)
     r=sub.add_parser('resume');r.add_argument('job_id',type=int)
     r=sub.add_parser('recover');r.add_argument('job_id',type=int);r.add_argument('--worker-stopped',action='store_true',required=True)
     a=sub.add_parser('attach-image');a.add_argument('record_id',type=int);a.add_argument('revision',type=int);a.add_argument('--slot',choices=('content','resolution_extra'),required=True);a.add_argument('path');a.add_argument('--source-url',required=True);a.add_argument('--license-url',required=True);a.add_argument('--license',required=True);a.add_argument('--reviewer',required=True);a.add_argument('--faces-reviewed',action='store_true',required=True);a.add_argument('--relevance-reviewed',action='store_true',required=True)
@@ -55,6 +56,8 @@ def main():
     elif args.command=='schedule':
         if config.env.get('AUTOMATION_PAUSED')=='1': raise SystemExit('Automation paused')
         print('Scheduled job',store.schedule())
+    elif args.command=='resume-photo':
+        resume_photo_render(store,args.job_id);print('Photo render queued; uncertain assessments preserved and excluded')
     elif args.command=='resume':
         resume(store,args.job_id);print('Job queued from saved checkpoints')
     elif args.command=='recover':
@@ -119,8 +122,6 @@ def main():
             if not worked and not delivered: time.sleep(2)
 
 
-if __name__=='__main__':
-    main()
 
 
 def resume_photo_render(store,jid):
@@ -131,7 +132,7 @@ def resume_photo_render(store,jid):
     """
     with store.tx() as c:
         job=c.execute('SELECT * FROM jobs WHERE id=?',(jid,)).fetchone()
-        if not job or job['kind']!='render' or job['state']!='uncertain':
+        if not job or job['kind']!='render' or job['state'] not in ('uncertain','waiting'):
             raise ValueError('Only an uncertain photo render can use this repair')
         payload=json.loads(job['payload'])
         current=c.execute('SELECT revision,status FROM selections WHERE id=?',(payload['id'],)).fetchone()
@@ -150,3 +151,7 @@ def resume_photo_render(store,jid):
         payload['exclude_photo_ids']=sorted(excluded)
         c.execute("UPDATE jobs SET state='queued',error_code=NULL,payload=? WHERE id=?",(json.dumps(payload),jid))
         store.event(c,jid,'operator_photo_repair','Uncertain checkpoints preserved; source IDs excluded; no paid replay')
+
+
+if __name__=='__main__':
+    main()
