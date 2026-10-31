@@ -159,7 +159,10 @@ class Telegram:
         base='https://api.telegram.org/bot'+env['TELEGRAM_BOT_TOKEN']
         handles=[]
         try:
-            if payload.get('files'):
+            if len(payload.get('files',[]))==1:
+                h=open(payload['files'][0],'rb');handles.append(h)
+                response=requests.post(base+'/sendPhoto',data={'chat_id':env['TELEGRAM_CHAT_ID'],'caption':payload.get('text','')[:1000]},files={'photo':h},timeout=90)
+            elif payload.get('files'):
                 media=[]; files={}
                 for i,path in enumerate(payload['files']):
                     h=open(path,'rb'); handles.append(h); files[f'p{i}']=h

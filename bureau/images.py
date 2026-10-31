@@ -103,8 +103,17 @@ def pixabay_search(config,query,http=requests):
         cache.parent.mkdir(parents=True,exist_ok=True)
         temp=cache.with_suffix('.tmp');temp.write_text(json.dumps(result));temp.replace(cache)
         return result
+    except requests.exceptions.SSLError:
+        raise ExternalError('Pixabay TLS verification failed') from None
+    except requests.exceptions.Timeout:
+        raise ExternalError('Pixabay connection/read timeout') from None
+    except requests.exceptions.ConnectionError:
+        raise ExternalError('Pixabay DNS/network connection failed') from None
+    except requests.exceptions.HTTPError as exc:
+        status = getattr(exc.response, 'status_code', None)
+        raise ExternalError(f'Pixabay HTTP status {status}; request URL and response withheld') from None
     except Exception:
-        raise ExternalError('Pixabay search failed; use manual licensed-source fallback') from None
+        raise ExternalError('Pixabay response/cache processing failed') from None
 
 
 def download_candidate(config,candidate,destination,http=requests):

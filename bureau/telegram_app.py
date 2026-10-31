@@ -38,6 +38,11 @@ def build_app(config):
             elif name=='newcandidates':
                 job=store.schedule(regenerate=True,maximum=config.integer('MAX_CANDIDATE_REGENERATIONS',2),request_key=f'newcandidates:{update.update_id}',source='telegram')
                 payload={'text':f'새 후보 생성 요청 접수: 작업 {job}. 일일 호출 상한이 적용됩니다.'}
+            elif name=='photos':
+                from .photo_review import offer
+                rid=int(context.args[0]);r=store.row(rid)
+                count=offer(store,rid,r['revision'])
+                payload={'text':f'사진 후보 {count}개를 보냈습니다. 적합한 사진만 검토 완료 버튼으로 선택하세요.'}
             elif name=='images':
                 rid=int(context.args[0]); query=' '.join(context.args[1:]); store.row(rid)
                 if not query or len(query)>100: raise ValueError('Use /images ID concrete English subject/action')
@@ -102,7 +107,11 @@ def build_app(config):
             return
         try:
             parts=query.data.split(':'); action=parts[0]
-            if action=='candidate':
+            if action=='photopick':
+                from .photo_review import approve
+                ready=approve(store,int(parts[1]),int(parts[2]),int(parts[3]),parts[4],str(update.effective_user.id))
+                text='사진 검토 기록을 저장했습니다. '+('두 사진이 준비되어 렌더링을 재개합니다.' if ready else '다른 슬롯의 사진도 검토·선택하세요.')
+            elif action=='candidate':
                 rid=store.select(int(parts[1])); text=f'후보 선택 접수: {rid}. 기획안을 생성한 뒤 승인 버튼을 보내드립니다. /preview {rid}'
             elif action=='batchregen':
                 # Batch-bound request key makes concurrent/replayed clicks idempotent.
@@ -158,9 +167,9 @@ def build_app(config):
         if update and authorized(update): queue(update,{'text':'처리 오류가 발생했습니다. /status 확인 후 관리자에게 작업 ID를 전달하세요.'})
 
     app=ApplicationBuilder().token(e['TELEGRAM_BOT_TOKEN']).build()
-    for name in ('whoami','start','candidates','newcandidates','images','status','preview','revise','review','acceptdraft','retry','resend'):
+    for name in ('whoami','start','candidates','newcandidates','images','photos','status','preview','revise','review','acceptdraft','retry','resend'):
         app.add_handler(CommandHandler(name,command))
-    app.add_handler(CallbackQueryHandler(callback,pattern=r'^(candidate|batchregen|batchreject|planapprove|planedit|imageedit|back|approve|reject|regenerate):'))
+    app.add_handler(CallbackQueryHandler(callback,pattern=r'^(photopick|candidate|batchregen|batchreject|planapprove|planedit|imageedit|back|approve|reject|regenerate):'))
     app.add_handler(CommandHandler('cancelrevision',cancel_revision))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,revision_message))
     app.add_error_handler(error)
