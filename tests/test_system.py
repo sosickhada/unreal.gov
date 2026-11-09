@@ -31,7 +31,13 @@ class FakeClaude:
     def generate(self,prompt,maximum):
         self.calls+=1
         if self.fail: raise TimeoutError('DO_NOT_EXPOSE_SECRET')
-        data=CANDIDATES if maximum==3000 else draft(NEWS[0]['url'])
+        if maximum==7000:
+            from bureau.editorial import local_pool
+            pool=local_pool('2026-10-30',count=72)
+            # Preserve source fixture for downstream provenance tests.
+            for item, news in zip(pool,NEWS): item.update(source_url=news['url'],source_connection='직접 참고')
+            data={'candidates':pool}
+        else: data=CANDIDATES if maximum==3000 else draft(NEWS[0]['url'])
         return {'raw':json.dumps(data,ensure_ascii=False),'input_tokens':120,'output_tokens':180}
 
 
@@ -96,7 +102,7 @@ class SystemTest(unittest.TestCase):
         rid=self.approve();self.engine.run_one()
         self.assertEqual(self.store.row(rid)['status'],'publish_waiting')
         self.assertEqual(self.instagram.published,0)
-        self.assertEqual(self.claude.calls,2)
+        self.assertEqual(self.claude.calls,3)
         self.assertEqual(self.media.renders,1)
         self.assertEqual(len(json.loads(self.q('SELECT payload FROM assets')[0]['payload'])['files']),5)
     def test_official_publication_once(self):
@@ -121,7 +127,7 @@ class SystemTest(unittest.TestCase):
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
             ids=list(pool.map(lambda _:self.store.select(cid),range(12)))
         self.assertEqual(len(set(ids)),1)
-        self.engine.run_one();self.assertEqual(self.claude.calls,2)
+        self.engine.run_one();self.assertEqual(self.claude.calls,3)
     def test_telegram_failure_no_paid_regeneration(self):
         self.preview();calls=self.claude.calls
         self.telegram.fail=True;self.engine.deliver_one()
@@ -136,14 +142,14 @@ class SystemTest(unittest.TestCase):
         self.assertEqual(self.media.renders,1);self.assertEqual(len(self.q('SELECT * FROM assets')),1)
         job=self.q("SELECT id FROM jobs WHERE kind='render'")[0]['id']
         self.media.fail=False;resume(self.store,job);self.engine.run_one()
-        self.assertEqual(self.media.renders,1);self.assertEqual(self.claude.calls,2)
+        self.assertEqual(self.media.renders,1);self.assertEqual(self.claude.calls,3)
         self.assertEqual(self.store.row(rid)['status'],'preview_ready')
     def test_paid_unknown_is_not_retryable(self):
         cid=self.candidates();self.store.select(cid);self.claude.fail=True;self.engine.run_one()
         job=self.q("SELECT * FROM jobs WHERE kind='draft'")[0]
         self.assertEqual(job['state'],'uncertain')
         with self.assertRaises(ValueError):resume(self.store,job['id'])
-        self.assertFalse(self.engine.run_one());self.assertEqual(self.claude.calls,2)
+        self.assertFalse(self.engine.run_one());self.assertEqual(self.claude.calls,3)
         self.assertNotIn('DO_NOT_EXPOSE_SECRET',json.dumps(self.q('SELECT * FROM events')))
     def test_unknown_publish_is_never_replayed(self):
         rid=self.approve();self.instagram.active=True;self.instagram.fail=True;self.engine.run_one()
@@ -177,8 +183,8 @@ class SystemTest(unittest.TestCase):
     def test_daily_call_budget(self):
         self.engine.config=Config(self.path,{'ENABLE_EXTERNAL_CALLS':'1','MAX_CLAUDE_CALLS_PER_DAY':'0','CANDIDATE_GENERATION_MODE':'model'})
         self.store.schedule();self.engine.run_one();self.assertEqual(self.claude.calls,0)
-        self.assertEqual(self.q('SELECT state FROM jobs')[0]['state'],'succeeded')
-        self.assertEqual(len(self.q('SELECT * FROM candidates')),3)
+        self.assertEqual(self.q('SELECT state FROM jobs')[0]['state'],'waiting')
+        self.assertEqual(len(self.q('SELECT * FROM candidates')),0)
     def test_disabled_worker_does_nothing(self):
         self.engine.config=Config(self.path,{})
         self.store.schedule();self.assertFalse(self.engine.run_one());self.assertEqual(self.claude.calls,0)

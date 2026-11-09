@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import datetime as dt
 from zoneinfo import ZoneInfo
 from .store import now, kst_day, Store
@@ -67,6 +68,7 @@ class Engine:
         configuration_detail=''
         try:
             if job['kind']=='candidates': self.candidates(job,p)
+            elif job['kind']=='candidate_replace': self.candidates(job,p)
             elif job['kind']=='draft': self.draft(job,p)
             elif job['kind']=='render': self.render(job,p)
             elif job['kind']=='publish': self.publish(job,p)
@@ -94,32 +96,75 @@ class Engine:
     def candidates(self, job, p):
         with self.store.tx() as c:
             batch=c.execute('SELECT * FROM batches WHERE id=?',(p['batch_id'],)).fetchone()
+            if p.get('rejected_id'):
+                old=c.execute('SELECT position FROM candidates WHERE id=?',(p['rejected_id'],)).fetchone()
+                if old and old['position']<0: return  # replacement and outbox committed together
+            elif batch['status']=='ready': return
             if batch['day']!=kst_day():
                 raise Waiting('Expired daily batch; do not catch up stale news')
         news=[]
         if self.config.env.get('USE_NEWS_REFERENCE')=='1':
             try: news=relevant_news(self.step(job,'rss',self.news))
             except NewsFailure: news=[]
-        # Seed bank keeps daily delivery independent of RSS/model availability.
-        data=everyday_candidates(batch['day'],batch['generation'])
-        if self.config.env.get('CANDIDATE_GENERATION_MODE','curated')=='model':
-            try:
-                raw=self.step(job,'claude_candidates',lambda:self.claude.generate(candidate_prompt(news),3000),True,True)
-                data=validate_candidates(parse_json(raw['raw']),news)
-            except (ValueError,KeyError,TypeError,Uncertain,Waiting):
-                # ConfigurationError inherits ValueError. Preserve uncertain paid
-                # intent, but do not let a candidate model outage reduce the batch.
-                with self.store.tx() as c:
-                    self.store.event(c,p['batch_id'],'candidate_fallback','model unavailable/invalid; reviewed everyday seeds used; no retry')
+        from .editorial import local_pool, screen
+        pool=local_pool(batch['day'],str(batch['generation'])+':'+str(p.get('rejected_id',0)),72)
         with self.store.tx() as c:
-            for i,candidate in enumerate(data['candidates'],1):
+            feedback=[{'reason':r['reason'][:150],'summary':json.loads(r['payload']).get('summary','')[:120]} for r in c.execute('SELECT reason,payload FROM candidate_feedback ORDER BY created_at DESC LIMIT 6')]
+            history=[{'summary':json.loads(r[0]).get('summary','')[:120],'conflict':json.loads(r[0]).get('conflict',json.loads(r[0]).get('situation_key',''))[:60]} for r in c.execute('SELECT payload FROM candidates ORDER BY id DESC LIMIT 12')]
+        if self.config.env.get('CANDIDATE_GENERATION_MODE','curated')=='model':
+            for attempt in range(2):
+                raw=self.step(job,f'claude_pool_{attempt}',lambda:self.claude.generate(candidate_prompt([])+'\n일상 기반만 생성.\n최근 부정적 예시(해당 사건만 피하고 소재 전체를 금지하지 말 것):'+json.dumps(feedback,ensure_ascii=False)+'\n재표현 금지 과거 사건:'+json.dumps(history,ensure_ascii=False),7000),True,True)
+                generated=parse_json(raw['raw']).get('candidates',[])
+                if len(generated)<9:
+                    if attempt==0: continue
+                    raise Waiting('At least nine internal candidates required')
+                validated=[]
+                for item in generated:
+                    try:
+                        # Reuse existing field and source validation in three-item groups below.
+                        from .content import CANDIDATE_FIELDS, text, UNSUITABLE
+                        for field,maximum in CANDIDATE_FIELDS.items(): text(item.get(field),field,maximum)
+                        if any(t in json.dumps(item,ensure_ascii=False) for t in UNSUITABLE): continue
+                        if item.get('source_url') and item['source_url'] not in {n['url'] for n in news}: continue
+                        validated.append(item)
+                    except ValueError: continue
+                pool=validated
+                if news and attempt==0:
+                    news_raw=self.step(job,'claude_news_pool',lambda:self.claude.generate(candidate_prompt(news)+'\n이번 호출은 뉴스 기반만 별도 생성. 직접 연관된 뉴스가 없으면 빈 배열을 반환하라.',7000),True,True)
+                    news_items=parse_json(news_raw['raw']).get('candidates',[])
+                    for item in news_items:
+                        try:
+                            for field,maximum in CANDIDATE_FIELDS.items(): text(item.get(field),field,maximum)
+                            if item.get('source_url') not in {n['url'] for n in news} or not item.get('source_connection'): continue
+                            if any(t in json.dumps(item,ensure_ascii=False) for t in UNSUITABLE): continue
+                            pool.append(item)
+                        except (ValueError,TypeError): continue
+                with self.store.tx() as c:
+                    existing=[json.loads(r[0]) for r in c.execute("SELECT payload FROM candidates WHERE batch_id=? AND status!='rejected'",(p['batch_id'],))] if p.get('rejected_id') else []
+                    selected=screen(c,pool,job['id'],existing)
+                if len(selected)>=(1 if p.get('rejected_id') else 3): break
+            else: raise Waiting('Editorial pool exhausted; new events required')
+        else:
+            with self.store.tx() as c:
+                existing=[json.loads(r[0]) for r in c.execute("SELECT payload FROM candidates WHERE batch_id=? AND status!='rejected'",(p['batch_id'],))] if p.get('rejected_id') else []
+                selected=screen(c,pool,job['id'],existing)
+        needed=1 if p.get('rejected_id') else 3
+        if len(selected)<needed: raise Waiting('No distinct quality candidates; manual editorial review required')
+        data={'candidates':selected[:needed]}
+        with self.store.tx() as c:
+            if p.get('rejected_id'):
+                c.execute('UPDATE candidates SET position=-id WHERE id=?',(p['rejected_id'],))
+            for i,candidate in enumerate(data['candidates'],p.get('position',1)):
                 c.execute('INSERT OR IGNORE INTO candidates(batch_id,position,title,payload,created_at) VALUES(?,?,?,?,?)',(p['batch_id'],i,candidate['title'],json.dumps(candidate,ensure_ascii=False),now()))
+            from .editorial import structure
+            for row in c.execute('SELECT id,payload FROM candidates WHERE batch_id=?',(p['batch_id'],)).fetchall():
+                c.execute('INSERT OR IGNORE INTO idea_structures VALUES(?,?,?,?,?,?)',(row['id'],*structure(json.loads(row['payload'])).values()))
             c.execute("UPDATE batches SET status='ready' WHERE id=?",(p['batch_id'],))
-            message=candidate_message(c,p['batch_id'])
+            message=candidate_message(c,p['batch_id'],p.get('position') if p.get('rejected_id') else None)
             origin=c.execute("SELECT detail FROM events WHERE subject=? AND action='scheduled' ORDER BY id LIMIT 1",(str(p['batch_id']),)).fetchone()
             if origin and json.loads(origin[0])['source']=='vm_timer':
                 message['expires_at']=dt.datetime.combine(dt.date.fromisoformat(batch['day']),dt.time(18,5),ZoneInfo('Asia/Seoul')).astimezone(dt.timezone.utc).isoformat()
-            self.store.notify(c,f'candidates:{p["batch_id"]}',message)
+            self.store.notify(c,(f'candidates:{p["batch_id"]}:replace:{p["rejected_id"]}' if p.get('rejected_id') else f'candidates:{p["batch_id"]}'),message)
 
     def draft(self, job, p):
         r=self.store.row(p['id'])
@@ -200,6 +245,14 @@ class Engine:
                             if slot not in chosen and query:
                                 self.store.enqueue(c,f'image-search:{p["id"]}:{p["revision"]}:{slot}','image_search',dict(p,slot=slot,query=query))
             if set(chosen)!=set(SLOTS):
+                from .generated_images import generate_local
+                for slot in SLOTS:
+                    if slot in chosen: continue
+                    result=self.step(job,'local_image_'+slot,lambda slot=slot:generate_local(self.config,draft,slot,Path(self.config.db).parent/'data/generated'/f'{p["id"]}-{p["revision"]}-{slot}.png'))
+                    with self.store.tx() as c:
+                        self.store.event(c,p['id'],'generated_image_fallback',json.dumps(result,ensure_ascii=False))
+                        if result.get('available'):
+                            self.store.notify(c,f'generated-preview:{p["id"]}:{p["revision"]}:{slot}',{'text':f'AI 생성 후보: 관련성·해상도·손/얼굴·구도 및 모델 라이선스를 직접 검토한 후 /photos {p["id"]} 명령으로 선택하세요. 자동 승인되지 않습니다.','files':[result['path']],'sha256':[result['sha256']]})
                 raise Waiting('Two distinct reviewed topic photographs required')
             draft['slides'][1]['background_image']=chosen['content']['path']
             draft['slides'][2]['background_image']=chosen['resolution_extra']['path']
@@ -327,14 +380,16 @@ class Engine:
         return True
 
 
-def candidate_message(c,batch):
-    rows=c.execute('SELECT * FROM candidates WHERE batch_id=? ORDER BY position',(batch,)).fetchall()
+def candidate_message(c,batch,position=None):
+    rows=c.execute("SELECT * FROM candidates WHERE batch_id=? AND status!='rejected' ORDER BY position",(batch,)).fetchall()
     lines=['🏛️ 오늘의 일상 심의 후보 · 가상 사건']; buttons=[]
     for row in rows:
+        if position is not None and row['position']!=position: continue
         p=json.loads(row['payload'])
         lines.append(f'{row["position"]}. {row["title"]}\n상황: {p["summary"]}\n공감: {p.get("empathy", "직접 검토 필요")}\n훅: {p["hook"]}\n판정: {p["satire_angle"]}\n공유 이유: {p.get("share_reason", "직접 검토 필요")}')
         row_buttons=[]
         if row['status']=='available': row_buttons.append({'text':f'후보 {row["position"]} 선택','callback_data':f'candidate:{row["id"]}'})
+        if row['status']=='available': row_buttons.append({'text':'재미없음','callback_data':f'boring:{row["id"]}'})
         if p.get('source_url'): row_buttons.append({'text':'참고 원문','url':p['source_url']})
         if row_buttons: buttons.append(row_buttons)
     buttons.append([{'text':'후보 다시 생성','callback_data':f'batchregen:{batch}'}])

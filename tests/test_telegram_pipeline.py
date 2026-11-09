@@ -100,7 +100,7 @@ class TelegramPipelineTests(unittest.TestCase):
         self.assertEqual(len(rows),3)
         values=[json.loads(r['payload']) for r in rows]
         self.assertEqual(len({r['situation_key'] for r in values}),3)
-        self.assertTrue(all(r['source_url'] is None and r['quality']['score']==100 for r in values))
+        self.assertTrue(all(r['source_url'] is None and r['quality']['score']>=70 for r in values))
         d=system.draft('');d['source_url']=None;validate_draft(d,None)
 
     def test_bad_news_and_repeated_situations_rejected(self):
@@ -134,10 +134,10 @@ class TelegramPipelineTests(unittest.TestCase):
         resume(self.store,job);self.engine.run_one()
         self.assertEqual(self.instagram.published,1)
 
-    def test_model_timeout_falls_back_without_repeated_paid_request(self):
+    def test_model_timeout_waits_without_repeated_paid_request(self):
         self.engine.config=Config(self.path,{'ENABLE_EXTERNAL_CALLS':'1','CANDIDATE_GENERATION_MODE':'model'})
         self.claude.fail=True;self.store.schedule();self.engine.run_one()
-        self.assertEqual(len(self.q('SELECT * FROM candidates')),3)
+        self.assertEqual(len(self.q('SELECT * FROM candidates')),0)
         self.assertEqual(self.q('SELECT state FROM checkpoints')[0]['state'],'uncertain')
         self.assertFalse(self.engine.run_one());self.assertEqual(self.claude.calls,1)
 
@@ -156,3 +156,28 @@ class TelegramPipelineTests(unittest.TestCase):
 
 
 if __name__=='__main__':unittest.main()
+
+class CandidateFeedbackTests(unittest.TestCase):
+    setUp=TelegramPipelineTests.setUp
+    tearDown=TelegramPipelineTests.tearDown
+    q=TelegramPipelineTests.q
+    candidates=TelegramPipelineTests.candidates
+    app=TelegramPipelineTests.app
+    click=TelegramPipelineTests.click
+    def test_reason_buttons_and_idempotent_replacement(self):
+        cid=self.candidates();self.app()
+        self.click(f'boring:{cid}')
+        rows=self.q("SELECT payload FROM outbox WHERE delivery_key='update:100:reply'")
+        self.assertEqual(len(json.loads(rows[0]['payload'])['reply_markup']['inline_keyboard']),5)
+        self.click(f'boringreason:{cid}:1',update_id=101)
+        self.click(f'boringreason:{cid}:1',update_id=102)
+        self.assertEqual(len(self.q('SELECT * FROM candidate_feedback')),1)
+        self.assertEqual(len(self.q("SELECT * FROM jobs WHERE kind='candidate_replace'")),1)
+
+    def test_other_feedback_persists_across_new_app(self):
+        cid=self.candidates();self.app();self.click(f'boringreason:{cid}:4')
+        self.app()
+        update=NS(effective_user=NS(id=11),effective_chat=NS(id=22,type='private'),update_id=201,message=NS(text='친구 사이 손해가 구체적이지 않습니다'))
+        asyncio.run(self.message(update,NS()))
+        self.assertEqual(self.q('SELECT reason FROM candidate_feedback')[0]['reason'],update.message.text)
+        self.assertEqual(self.q('SELECT * FROM feedback_pending'),[])

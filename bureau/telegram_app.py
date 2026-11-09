@@ -107,7 +107,25 @@ def build_app(config):
             return
         try:
             parts=query.data.split(':'); action=parts[0]
-            if action=='photopick':
+            if action=='boring':
+                cid=int(parts[1])
+                labels=['공감이 안 됨','너무 뻔함','이전 아이디어와 비슷함','웃음 포인트가 약함','기타 — 직접 입력']
+                queue(update,{'text':'재미없음 사유를 선택하세요.','reply_markup':{'inline_keyboard':[[{'text':label,'callback_data':f'boringreason:{cid}:{i}'}] for i,label in enumerate(labels)]}})
+                await query.answer('사유 선택'); return
+            elif action=='boringreason':
+                cid=int(parts[1]); reason=int(parts[2])
+                if reason not in range(5): raise ValueError('Invalid feedback reason')
+                if reason==4:
+                    with store.tx() as c:
+                        row=c.execute("SELECT x.id FROM candidates x JOIN batches b ON b.id=x.batch_id WHERE x.id=? AND x.status='available' AND b.day=? AND b.status='ready'",(cid,kst_day())).fetchone()
+                        if not row: raise ValueError('Stale candidate')
+                        c.execute('DELETE FROM conversations WHERE user_key=?',(str(update.effective_user.id),))
+                        c.execute('INSERT OR REPLACE INTO feedback_pending VALUES(?,?)',(str(update.effective_user.id),cid))
+                    text='이 후보가 재미없는 이유를 메시지로 입력하세요 (1–1000자).'
+                else:
+                    reasons=['공감이 안 됨','너무 뻔함','이전 아이디어와 비슷함','웃음 포인트가 약함']
+                    store.reject_candidate(cid,reasons[reason]); text='거절 사유를 저장했습니다. 이 후보만 교체합니다.'
+            elif action=='photopick':
                 from .photo_review import approve
                 ready=approve(store,int(parts[1]),int(parts[2]),int(parts[3]),parts[4],str(update.effective_user.id))
                 text='사진 검토 기록을 저장했습니다. '+('두 사진이 준비되어 렌더링을 재개합니다.' if ready else '다른 슬롯의 사진도 검토·선택하세요.')
@@ -151,6 +169,12 @@ def build_app(config):
     async def revision_message(update,context):
         if not authorized(update): return
         try:
+            with store.tx() as c:
+                pending=c.execute('SELECT candidate_id FROM feedback_pending WHERE user_key=?',(str(update.effective_user.id),)).fetchone()
+            if pending:
+                store.reject_candidate(pending[0],update.message.text)
+                with store.tx() as c: c.execute('DELETE FROM feedback_pending WHERE user_key=? AND candidate_id=?',(str(update.effective_user.id),pending[0]))
+                queue(update,{'text':'직접 입력한 사유를 저장했습니다. 이 후보만 교체합니다.'}); return
             rev=store.apply_revision(str(update.effective_user.id),update.message.text,
                                      f'natural-revision:{update.update_id}',config.integer('MAX_CONTENT_REVISIONS',3))
             queue(update,{'text':f'수정 요청을 저장했습니다. 새 버전 v{rev}을 준비합니다.'})
@@ -159,7 +183,9 @@ def build_app(config):
 
     async def cancel_revision(update,context):
         if not authorized(update): return
-        with store.tx() as c: c.execute('DELETE FROM conversations WHERE user_key=?',(str(update.effective_user.id),))
+        with store.tx() as c:
+            c.execute('DELETE FROM conversations WHERE user_key=?',(str(update.effective_user.id),))
+            c.execute('DELETE FROM feedback_pending WHERE user_key=?',(str(update.effective_user.id),))
         queue(update,{'text':'수정 입력 대기를 취소했습니다.'})
 
     async def error(update,context):
@@ -169,7 +195,7 @@ def build_app(config):
     app=ApplicationBuilder().token(e['TELEGRAM_BOT_TOKEN']).build()
     for name in ('whoami','start','candidates','newcandidates','images','photos','status','preview','revise','review','acceptdraft','retry','resend'):
         app.add_handler(CommandHandler(name,command))
-    app.add_handler(CallbackQueryHandler(callback,pattern=r'^(photopick|candidate|batchregen|batchreject|planapprove|planedit|imageedit|back|approve|reject|regenerate):'))
+    app.add_handler(CallbackQueryHandler(callback,pattern=r'^(boring|boringreason|photopick|candidate|batchregen|batchreject|planapprove|planedit|imageedit|back|approve|reject|regenerate):'))
     app.add_handler(CommandHandler('cancelrevision',cancel_revision))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,revision_message))
     app.add_error_handler(error)

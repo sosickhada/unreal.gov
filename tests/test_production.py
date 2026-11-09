@@ -77,7 +77,7 @@ class ProductionPipelineTests(unittest.TestCase):
                 c.execute('UPDATE candidates SET payload=? WHERE id=?',(json.dumps(payload),row['id']))
             message=candidate_message(c,rows[0]['batch_id'])
         self.assertLess(len(message['text']),4000)
-        self.assertEqual(len(message['reply_markup']['inline_keyboard'][0][1]['url']),1821)
+        self.assertEqual(len(message['reply_markup']['inline_keyboard'][0][2]['url']),1821)
 
     def test_similar_news_and_tracking_urls_removed(self):
         items=[{'title':'직장인 퇴근 뒤 업무 연락 금지 논의 확대 - 가신문','url':'https://news.example/a?utm_source=one'},
@@ -102,8 +102,8 @@ class ProductionPipelineTests(unittest.TestCase):
         self.claude.generate=invalid
         self.store.schedule();self.engine.run_one()
         job=self.q('SELECT * FROM jobs')[0]
-        self.assertEqual(job['state'],'succeeded')
-        self.assertEqual(len(self.q('SELECT * FROM candidates')),3)
+        self.assertEqual(job['state'],'failed')
+        self.assertEqual(len(self.q('SELECT * FROM candidates')),0)
         self.assertFalse(self.engine.run_one())
         self.assertEqual(self.claude.calls,1)
 
@@ -120,7 +120,7 @@ class ProductionPipelineTests(unittest.TestCase):
         with self.assertRaises(ValueError): self.store.accept_draft(rid,1)
         self.assertEqual(len(self.q("SELECT * FROM jobs WHERE kind='render'")),1)
         self.engine.run_one();self.assertEqual(self.store.row(rid)['status'],'preview_ready')
-        self.assertEqual(self.claude.calls,2)
+        self.assertEqual(self.claude.calls,3)
         self.assertFalse(self.q("SELECT * FROM jobs WHERE kind='draft' AND state='waiting'"))
 
     def test_new_revision_never_labels_previous_draft_as_current(self):
@@ -140,14 +140,14 @@ class ProductionPipelineTests(unittest.TestCase):
         self.assertEqual(self.store.row(rid)['status'],'draft_invalid')
         self.assertFalse(self.q("SELECT * FROM jobs WHERE kind='render'"))
         with self.assertRaises(ValueError):self.store.accept_draft(rid,1)
-        self.assertEqual(self.claude.calls,2)
+        self.assertEqual(self.claude.calls,3)
         self.store.revise(rid,'출처를 유지하고 문장 수정')
 
     def test_quality_detects_repetition_long_sentences_and_fiction_boundary(self):
         d=system.draft(system.NEWS[0]['url'])
         d['slides'][1]['body']='같은 문장을 반복합니다. 같은 문장을 반복합니다.'
         self.assertIn('repeated_sentence',draft_quality(d))
-        self.assertIn('fiction_boundary_unclear',draft_quality(d))
+        self.assertNotIn('fiction_boundary_unclear',draft_quality(d))
         d['slides'][1]['body']='가상 '+('긴 문장 '*30)+'.'
         self.assertIn('long_sentence',draft_quality(d))
 
@@ -185,7 +185,7 @@ class ProductionPipelineTests(unittest.TestCase):
         with self.store.tx() as c:c.execute("UPDATE outbox SET state='queued' WHERE delivery_key LIKE 'media:%'")
         self.engine.deliver_one();self.engine.deliver_one()
         self.assertEqual(self.q("SELECT state FROM outbox WHERE delivery_key LIKE 'approval:%'")[0]['state'],'sent')
-        self.assertEqual(self.claude.calls,2)
+        self.assertEqual(self.claude.calls,3)
 
     def test_telegram_full_commands_and_duplicate_approval(self):
         from bureau.telegram_app import build_app
@@ -218,7 +218,7 @@ class ProductionPipelineTests(unittest.TestCase):
         update.update_id=501
         asyncio.run(command(update,NS(args=[])));asyncio.run(command(update,NS(args=[])))
         self.assertEqual(len(self.q('SELECT * FROM batches')),2)
-        self.assertEqual(self.claude.calls,1)
+        self.assertEqual(self.claude.calls,2)
 
 
 class OperationalTests(unittest.TestCase):

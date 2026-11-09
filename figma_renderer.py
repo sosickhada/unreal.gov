@@ -389,7 +389,7 @@ def subset_fonts(draft, destination):
     from fontTools import subset
     from fontTools.ttLib import TTFont
     text = json.dumps(draft, ensure_ascii=False) + string.printable + (
-        '비현실문제해결부 심의 기록 사건번호 제 2026-1024호 민원 접수 유형 '
+        '※ 본 사건은 허구입니다. 비현실문제해결부 심의 기록 사건번호 제 2026-1024호 민원 접수 유형 '
         '처분/판정안 심의 경과 퇴근 방해 및 용어 왜곡 · “”'
     )
     root = Path('/opt/unreal-github/figma_assets/fonts')
@@ -426,7 +426,7 @@ async def _render(draft, prefix, progress=None):
         source.write_text(json.dumps(draft, ensure_ascii=False))
         mark("font_prepare_start")
         subprocess.run([sys.executable, '-m', 'bureau.font_subset', str(source), str(Path(profile)/'render-fonts')],
-                       cwd=Path(__file__).parent, check=True, timeout=int(os.getenv('UNREAL_FONT_TIMEOUT_SECONDS','45')))
+                       cwd=Path(__file__).parent, check=True, timeout=int(os.getenv('UNREAL_FONT_TIMEOUT_SECONDS','120')))
         fonts = {name:Path(profile)/'render-fonts'/name for name in ('ROKG_R.ttf','ChosunNm-full-fixed.ttf')}
         mark("font_prepare_done", bytes=sum(p.stat().st_size for p in fonts.values()))
         mark("driver_start")
@@ -508,9 +508,9 @@ async def _render(draft, prefix, progress=None):
                         const r = el.getBoundingClientRect();
                         const range = document.createRange(); range.selectNodeContents(el);
                         const texts = [...range.getClientRects()];
-                        const overflow = r.left < 0 || r.right > 1080 || r.bottom > 1330 ||
+                        const overflow = r.left < 0 || r.right > 1080 || r.bottom > 1270 ||
                           el.scrollWidth > el.clientWidth + 2 ||
-                          texts.some(t => t.right > 1060 || t.left < 0 || t.bottom > 1330);
+                          texts.some(t => t.right > 1060 || t.left < 0 || t.bottom > 1270);
                         return {element: el.className, left:r.left, right:r.right, bottom:r.bottom, overflow};
                       });
                       const brokenImages = decoded.some(ok => !ok) || [...document.images].some(img => !img.complete || img.naturalWidth === 0);
@@ -547,3 +547,29 @@ async def _render(draft, prefix, progress=None):
 
 def render_carousel(draft, output_prefix, progress=None):
     return asyncio.run(_render(draft, output_prefix, progress))
+
+
+FICTION_NOTICE = "※ 본 사건은 허구입니다."
+
+def clean_fiction_body(value):
+    import re
+    return re.sub(r"(?:※\s*)?(?:본 사건은|이 사건은)\s*허구입니다[.!。]?\s*", "", str(value or ""))
+
+def fiction_template(fn):
+    from functools import wraps
+    @wraps(fn)
+    def wrapped(*args, **kwargs):
+        args=list(args)
+        if args and isinstance(args[0],dict):
+            args[0]=dict(args[0],body=clean_fiction_body(args[0].get('body')))
+        markup=fn(*args,**kwargs)
+        if 'class="fiction-notice"' in markup: return markup
+        notice='<style>.fiction-notice{position:absolute;right:65px;bottom:34px;font:19px/1.4 ROKG,Arial,sans-serif;color:#fff;text-shadow:0 1px 3px #000;opacity:.85;z-index:50;white-space:nowrap}</style><div class="fiction-notice">'+FICTION_NOTICE+'</div>'
+        return markup.replace('</body>',notice+'</body>') if '</body>' in markup else markup.replace('</html>',notice+'</html>')
+    return wrapped
+
+make_html=fiction_template(make_html)
+make_figma_content=fiction_template(make_figma_content)
+make_figma_cover=fiction_template(make_figma_cover)
+make_figma_resolution=fiction_template(make_figma_resolution)
+make_fixed_slide=fiction_template(make_fixed_slide)

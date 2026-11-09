@@ -72,7 +72,7 @@ def main():
         assert not engine.deliver_one() and telegram.calls==sends
         store.review(rid,1);store.decide(rid,1,True);assert engine.run_one()
         assert store.row(rid)['status']=='publish_waiting' and ig.published==0
-        assert claude.calls==2
+        assert claude.calls==3
         details=[]
         for p in artifact['pngs']+artifact['files']:
             with Image.open(p) as im:

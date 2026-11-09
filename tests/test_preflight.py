@@ -62,8 +62,8 @@ class ProviderPreflightTests(unittest.TestCase):
             engine.run_one();sdk.assert_not_called()
         with engine.store.tx() as c:
             job=c.execute('SELECT state,error_code FROM jobs').fetchone()
-            self.assertEqual(tuple(job),('succeeded',None))
-            self.assertEqual(c.execute('SELECT count(*) FROM candidates').fetchone()[0],3)
+            self.assertEqual(tuple(job),('waiting','claude_model_missing'))
+            self.assertEqual(c.execute('SELECT count(*) FROM candidates').fetchone()[0],0)
             self.assertEqual(c.execute("SELECT count(*) FROM checkpoints WHERE step LIKE 'claude%' ").fetchone()[0],0)
 
     def test_telegram_allowlist_rejects_empty_wildcard_and_names(self):

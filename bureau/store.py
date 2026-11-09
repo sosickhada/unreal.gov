@@ -47,6 +47,11 @@ class Store:
                 if name not in columns:
                     c.execute(f'ALTER TABLE selections ADD COLUMN {name} {typ}')
             statements = [
+                'CREATE TABLE IF NOT EXISTS idea_structures(candidate_id INTEGER PRIMARY KEY,title TEXT,situation TEXT,conflict TEXT,cause TEXT,verdict TEXT)',
+                'CREATE TABLE IF NOT EXISTS idea_audits(id INTEGER PRIMARY KEY,subject TEXT,payload TEXT,accepted INTEGER,checks TEXT,created_at TEXT)',
+                'CREATE TABLE IF NOT EXISTS candidate_feedback(candidate_id INTEGER PRIMARY KEY,reason TEXT NOT NULL,payload TEXT NOT NULL,created_at TEXT NOT NULL)',
+                'CREATE TABLE IF NOT EXISTS feedback_pending(user_key TEXT PRIMARY KEY,candidate_id INTEGER NOT NULL)',
+
                 'CREATE TABLE IF NOT EXISTS draft_versions(selection_id INTEGER NOT NULL, revision INTEGER NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(selection_id,revision))',
                 'CREATE TABLE IF NOT EXISTS quality_reviews(selection_id INTEGER NOT NULL, revision INTEGER NOT NULL, issues TEXT NOT NULL, accepted_at TEXT, PRIMARY KEY(selection_id,revision))',
                 'CREATE TABLE IF NOT EXISTS image_library(sha256 TEXT PRIMARY KEY, payload TEXT NOT NULL, tags TEXT NOT NULL, created_at TEXT NOT NULL)',
@@ -67,6 +72,10 @@ class Store:
             ]
             for sql in statements:
                 c.execute(sql)
+            from .editorial import structure
+            for r in c.execute('SELECT id,payload FROM candidates WHERE id NOT IN (SELECT candidate_id FROM idea_structures)').fetchall():
+                parts=structure(json.loads(r['payload']))
+                c.execute('INSERT OR IGNORE INTO idea_structures VALUES(?,?,?,?,?,?)',(r['id'],*parts.values()))
             c.execute('INSERT OR IGNORE INTO draft_versions SELECT id,revision,draft_json,? FROM selections WHERE draft_json IS NOT NULL',(now(),))
             c.execute('INSERT OR IGNORE INTO schema_versions VALUES(1,?)', (now(),))
             c.execute('INSERT OR IGNORE INTO schema_versions VALUES(2,?)', (now(),))
@@ -185,6 +194,7 @@ class Store:
             r=c.execute('SELECT * FROM selections WHERE id=? AND revision=?',(rid,revision)).fetchone()
             valid=('draft_ready','preview_ready') if mode=='image' else ('planning_review','draft_review','preview_ready')
             if not r or r['status'] not in valid: raise ValueError('Stale or unavailable content')
+            c.execute('DELETE FROM feedback_pending WHERE user_key=?',(user_key,))
             c.execute('INSERT OR REPLACE INTO conversations VALUES(?,?,?,?)',(user_key,rid,revision,mode))
 
     def apply_revision(self, user_key, note, request_key, maximum=3):
@@ -253,3 +263,14 @@ class Store:
             if approve:
                 self.enqueue(c,f'publish:{rid}:{revision}','publish',{'id':rid,'revision':revision})
             self.event(c,rid,'approved' if approve else 'rejected',str(revision))
+
+    def reject_candidate(self, cid, reason):
+        if not isinstance(reason,str) or not 1<=len(reason.strip())<=1000: raise ValueError('Invalid reason')
+        with self.tx() as c:
+            if c.execute('SELECT 1 FROM candidate_feedback WHERE candidate_id=?',(cid,)).fetchone(): return False
+            r=c.execute("SELECT x.* FROM candidates x JOIN batches b ON b.id=x.batch_id WHERE x.id=? AND x.status='available' AND b.status='ready' AND b.day=?",(cid,kst_day())).fetchone()
+            if not r: raise ValueError('Stale candidate')
+            c.execute('INSERT INTO candidate_feedback VALUES(?,?,?,?)',(cid,reason,r['payload'],now()))
+            c.execute("UPDATE candidates SET status='rejected' WHERE id=?",(cid,))
+            self.enqueue(c,f'replace:{cid}','candidate_replace',{'batch_id':r['batch_id'],'rejected_id':cid,'position':r['position']})
+            return True
