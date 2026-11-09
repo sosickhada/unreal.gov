@@ -47,6 +47,10 @@ def build_app(config):
                 rid=int(context.args[0]);r=store.row(rid)
                 count=offer(store,rid,r['revision'])
                 payload={'text':f'사진 후보 {count}개를 보냈습니다. 적합한 사진만 검토 완료 버튼으로 선택하세요.'}
+            elif name=='upload':
+                from .image_uploads import begin
+                begin(store,str(update.effective_user.id),int(context.args[0]),int(context.args[1]))
+                payload={'text':'사진을 캡션 OWN으로 보내세요. 본인 소유 또는 이용 허락 확인이 필요합니다. /photos ID에서 슬롯을 선택합니다.'}
             elif name=='images':
                 rid=int(context.args[0]); query=' '.join(context.args[1:]); store.row(rid)
                 if not query or len(query)>100: raise ValueError('Use /images ID concrete English subject/action')
@@ -112,14 +116,28 @@ def build_app(config):
         try:
             parts=query.data.split(':'); action=parts[0]
             if action in ('aigen','airegen'):
-                from .puter_images import generate, PuterBlocked
-                rid, revision = int(parts[1]), int(parts[2])
+                rid,revision=int(parts[1]),int(parts[2]);slot=parts[3];variant=parts[4]
                 row=store.row(rid)
-                if row['revision']!=revision or row['status']!='draft_ready': raise ValueError('Stale draft')
-                try:
-                    generate(config,json.loads(row['draft_json']),parts[3],approved_test=True)
-                except PuterBlocked as exc:
-                    text=str(exc)
+                if row['revision']!=revision or row['status']!='draft_ready' or slot not in ('content','resolution_extra'):raise ValueError('Stale request')
+                queue(update,{'text':'생성 모델 선택 · 무료 전용 비용 검증이 안 되면 호출하지 않습니다.', 'reply_markup':{'inline_keyboard':[
+                    [{'text':'자연스러운 장면 · Grok 2K','callback_data':f'pmodel:{rid}:{revision}:{slot}:natural:{variant}'}],
+                    [{'text':'사물 디테일 · FLUX.2 Dev','callback_data':f'pmodel:{rid}:{revision}:{slot}:detail:{variant}'}]]}},'models')
+                text='모델 선택 버튼을 확인하세요.'
+            elif action=='pmodel':
+                from .puter_images import schedule
+                jid=schedule(store,config,int(parts[1]),int(parts[2]),parts[3],parts[5],parts[4])
+                text=f'Puter 요청 작업 {jid}. 무료 잔액·비용 안전 검증 후에만 생성합니다. 중복 클릭은 한 작업입니다.'
+            elif action=='upstart':
+                from .image_uploads import begin
+                begin(store,str(update.effective_user.id),int(parts[1]),int(parts[2]))
+                text='본인 소유 또는 이용 허락을 확보한 사진을 캡션 OWN으로 보내세요. 원본 파일 전송을 권장합니다. 받은 후 본문/결의 슬롯을 선택합니다.'
+            elif action=='imgsearch':
+                rid,revision,index=int(parts[1]),int(parts[2]),int(parts[3]);slot=parts[4] if len(parts)>4 else 'content'
+                r=store.row(rid)
+                if r['revision']!=revision or r['status']!='draft_ready' or slot not in ('content','resolution_extra') or not 0<=index<5:raise ValueError('Stale search')
+                with store.tx() as c:
+                    jid=store.enqueue(c,f'unsplash-manual:{rid}:{revision}:{slot}:{index}','image_search',{'id':rid,'revision':revision,'slot':slot,'strategy':index,'manual_search':True})
+                text=f'참고 사진 탐색 작업 {jid}. /images ID 검색어로 직접 검색도 가능합니다.'
             elif action=='imagebudget':
                 text=budget_message(config,store)
             elif action=='photos':
@@ -201,6 +219,30 @@ def build_app(config):
         except (ValueError,TypeError):
             queue(update,{'text':'수정 요청을 적용하지 못했습니다. 현재 기획 수정/이미지 수정 버튼을 선택하고 1–1000자로 보내주세요.'})
 
+    async def upload_message(update,context):
+        if not authorized(update):return
+        from .image_uploads import accept
+        from .photo_review import offer
+        try:
+            msg=update.message
+            attachment=msg.document or (msg.photo[-1] if msg.photo else None)
+            if not attachment or not attachment.file_size or attachment.file_size>20_000_000:raise ValueError('20MB 이하 이미지 파일만 가능합니다.')
+            if (msg.caption or '').strip().upper()!='OWN':raise ValueError('본인 소유/이용 허락을 확인한 사진을 캡션 OWN으로 보내세요.')
+            # Fail stale/missing upload intents before any Telegram file request.
+            with store.tx() as c:
+                intent=c.execute('SELECT i.*,s.status,s.revision AS current_revision FROM image_upload_intents i JOIN selections s ON s.id=i.selection_id WHERE user_key=?',(str(update.effective_user.id),)).fetchone()
+                if not intent or intent['status']!='draft_ready' or intent['revision']!=intent['current_revision']:raise ValueError('먼저 현재 버전의 업로드 버튼 또는 /upload ID VERSION을 선택하세요.')
+                duplicate=c.execute("SELECT 1 FROM checkpoints WHERE step=?",('upload_'+str(update.update_id)+'_download',)).fetchone()
+            if duplicate:return
+            file=await context.bot.get_file(attachment.file_id)
+            if file.file_size and file.file_size>20_000_000:raise ValueError('Image too large')
+            data=bytes(await file.download_as_bytearray())
+            rid,revision=accept(store,str(update.effective_user.id),update.update_id,data,msg.caption)
+            offer(store,rid,revision)
+            queue(update,{'text':'사진을 저장했습니다. 후보 미리보기에서 본문 또는 결의 슬롯을 선택하세요.'})
+        except (ValueError,TypeError,IndexError):
+            queue(update,{'text':'업로드를 처리하지 못했습니다. 현재 버전의 업로드 버튼 → 20MB 이하 JPEG/PNG/WebP → 캡션 OWN 순서로 보내세요. 최소 짧은 변 512px이며 품질 검사를 통과해야 합니다.'})
+
     async def cancel_revision(update,context):
         if not authorized(update): return
         with store.tx() as c:
@@ -213,11 +255,12 @@ def build_app(config):
         if update and authorized(update): queue(update,{'text':'처리 오류가 발생했습니다. /status 확인 후 관리자에게 작업 ID를 전달하세요.'})
 
     app=ApplicationBuilder().token(e['TELEGRAM_BOT_TOKEN']).build()
-    for name in ('whoami','start','candidates','newcandidates','images','photos','imagebudget','status','preview','revise','review','acceptdraft','retry','resend'):
+    for name in ('whoami','start','candidates','newcandidates','images','photos','upload','imagebudget','status','preview','revise','review','acceptdraft','retry','resend'):
         app.add_handler(CommandHandler(name,command))
-    app.add_handler(CallbackQueryHandler(callback,pattern=r'^(aigen|airegen|imagebudget|photos|boring|boringreason|photopick|candidate|batchregen|batchreject|planapprove|planedit|imageedit|back|approve|reject|regenerate):'))
+    app.add_handler(CallbackQueryHandler(callback,pattern=r'^(pmodel|upstart|imgsearch|aigen|airegen|imagebudget|photos|boring|boringreason|photopick|candidate|batchregen|batchreject|planapprove|planedit|imageedit|back|approve|reject|regenerate):'))
     app.add_handler(CommandHandler('cancelrevision',cancel_revision))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,revision_message))
+    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE,upload_message))
     app.add_error_handler(error)
     return app
 

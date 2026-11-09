@@ -72,6 +72,7 @@ class Engine:
             elif job['kind']=='draft': self.draft(job,p)
             elif job['kind']=='render': self.render(job,p)
             elif job['kind']=='publish': self.publish(job,p)
+            elif job['kind']=='puter_image': self.puter_image(job,p)
             elif job['kind']=='gemini_image': self.gemini_image(job,p)
             elif job['kind']=='image_search': self.image_search(job,p)
             else: raise ValueError('Unknown job kind')
@@ -293,6 +294,18 @@ class Engine:
             approval['after_delivery']=f'media:{p["id"]}:{p["revision"]}'
             self.store.notify(c,f'approval:{p["id"]}:{p["revision"]}',approval)
 
+    def puter_image(self,job,p):
+        from .puter_images import PuterImages, PuterBlocked
+        from .photo_review import offer
+        r=self.store.row(p['id'])
+        if r['revision']!=p['revision'] or r['status']!='draft_ready':raise Waiting('Stale image request')
+        try:
+            self.step(job,'puter_image_'+p['slot'],lambda:PuterImages(self.config).generate(json.loads(r['draft_json']),p['slot'],job['job_key'],p.get('model_key','natural')))
+        except PuterBlocked as exc:
+            with self.store.tx() as c:self.store.notify(c,f'puter-blocked:{job["id"]}',{'text':str(exc)})
+            raise Waiting('Puter generation blocked or uncertain','puter_image_blocked') from None
+        offer(self.store,p['id'],p['revision'])
+
     def gemini_image(self,job,p):
         if self.config.env.get('IMAGE_PROVIDER')!='gemini-legacy':
             raise Waiting('Legacy Gemini provider disabled','gemini_image_blocked')
@@ -308,17 +321,34 @@ class Engine:
         offer(self.store,p['id'],p['revision'])
 
     def image_search(self, job, p):
-        from .unsplash import search as unsplash_search
-        if 'revision' in p:
+        from .unsplash import search as unsplash_search, search_plan, rank_candidates
+        r=self.store.row(p['id'])
+        if 'revision' in p and (r['revision']!=p['revision'] or r['status']!='draft_ready'):
+            raise Waiting('Stale search request')
+        if 'revision' in p and not p.get('manual_search'):
             raise Waiting('Automated Unsplash usage awaits policy clarification','unsplash_policy_blocked')
-        result=self.step(job,'unsplash_search',lambda:unsplash_search(self.config,p['query']))
-        lines=[f'사진 검색: 게시물 {p["id"]}. 자동 얼굴 검출/라이선스 승인이 아닙니다.']
-        for item in result[:5]:
-            lines.append(f'Unsplash {item["id"]}: {item["source_url"]} — {item["attribution"]} {item["photographer_url"]}')
-        lines.append('Unsplash 핫링크 정책 확인 전 카드 합성·Telegram 사진 전송·Instagram 재게시를 차단합니다. 링크에서 후보를 검토하세요.')
-        with self.store.tx() as c:
-            self.store.notify(c,f'images:{job["id"]}',{'text':'\n'.join(lines)})
-        if not result: raise Waiting('No suitable image candidates; manual review required')
+        if p.get('manual_search'):
+            draft=json.loads(r['draft_json']);slot=p.get('slot','content')
+            plan=search_plan(draft,slot);index=int(p.get('strategy',0))
+            if not 0<=index<len(plan['queries']):raise Waiting('No more search strategies')
+            query=plan['queries'][index]
+        else:
+            query=p['query'];index=0;slot='content';plan=None
+        result=self.step(job,'unsplash_search',lambda:unsplash_search(self.config,query))
+        ranked=rank_candidates(result,query)
+        lines=[f'Unsplash 참고 탐색 · 게시물 {p["id"]} · {slot} · 검색어: {query}',
+               '관련성 점수는 설명문과 검색어 일치에 근거합니다. 실사·인물·분위기·구도는 링크에서 직접 확인하세요.']
+        for item in ranked[:5]:
+            lines.append(f'{item["source_url"]}\n{item["attribution"]}: {item["photographer_url"]} · 관련성 {item["relevance_score"]:.0%}')
+        lines.append('참고용 사진 링크입니다. 카드용 파일 업로드/AI 생성은 /photos에서 진행하세요.')
+        payload={'text':'\n'.join(lines)}
+        if plan:
+            buttons=[]
+            if index+1<len(plan['queries']):buttons.append({'text':'다른 검색어로 탐색','callback_data':f'imgsearch:{p["id"]}:{p["revision"]}:{index+1}:{slot}'})
+            buttons.append({'text':'이미지 제작으로 돌아가기','callback_data':f'photos:{p["id"]}:{p["revision"]}'})
+            payload['reply_markup']={'inline_keyboard':[buttons]}
+        with self.store.tx() as c:self.store.notify(c,f'images:{job["id"]}',payload)
+        if not result:raise Waiting('No suitable image candidates; try another strategy')
 
     def publish(self, job, p):
         r=self.store.row(p['id'])

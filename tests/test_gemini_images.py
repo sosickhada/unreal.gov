@@ -261,7 +261,17 @@ class GeminiPipelineTests(unittest.TestCase):
         update=NS(effective_user=NS(id=11),effective_chat=NS(id=22),update_id=300,callback_query=NS(data='aigen:4:1:content:0',answer=AsyncMock()))
         asyncio.run(callback(update,NS()));asyncio.run(callback(update,NS()))
         self.assertEqual(len([r for r in self.rows('jobs') if r['kind']=='gemini_image']),0)
+        # The old generation button now opens a model picker; model confirmation
+        # queues one durable request, and the worker applies the cost gate.
+        update.update_id=302;update.callback_query.data='pmodel:4:1:content:natural:0'
+        asyncio.run(callback(update,NS()));asyncio.run(callback(update,NS()))
+        self.assertEqual(len([r for r in self.rows('jobs') if r['kind']=='puter_image']),1)
+        from bureau.engine import Engine
+        import test_system as fixtures
+        engine=Engine(Config(self.db,env),fixtures.FakeClaude(),fixtures.FakeMedia(),fixtures.FakeTelegram(),fixtures.FakeInstagram())
+        engine.run_one()
         self.assertTrue(all(r['state']=='blocked' for r in self.rows('puter_image_attempts')))
+        self.assertEqual(len(self.rows('puter_image_attempts')),1)
         update.update_id=301;update.callback_query.data='imagebudget:0';asyncio.run(callback(update,NS()))
         text=' '.join(json.loads(r['payload']).get('text','') for r in self.rows('outbox'))
         self.assertIn('무료 전용',text);self.assertNotIn('SENTINEL',text);self.http.post.assert_not_called()

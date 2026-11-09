@@ -1,76 +1,67 @@
-# Unsplash / Puter 운영 기록 (2026-11-09)
+# 이미지 제작 운영 (2026-11-09)
 
-## 구현 및 안전 경계
+## 사용 흐름
 
-- 기존 Pixabay 구현·테스트와 Gemini provider는 보존. 운영 기본 경로는 Unsplash 검색이며 legacy Gemini는 `IMAGE_PROVIDER=gemini-legacy`를 명시하지 않으면 worker에서 실행하지 않는다.
-- `/images ID 검색어`는 Unsplash 공식 REST 검색을 호출하고 사진가·출처 링크를 Telegram 텍스트로 제공한다. 원본 raw URL의 ixid를 유지하고 API width/height로 1080×1350 4:5 crop 가능 여부를 검사한다. 실제 이미지 바이트는 내려받지 않는다. API 해상도와 실제 디코딩 해상도의 일치는 현재 확인하지 않았으며 합성 허용 시 기존 inspect_image로 확인해야 한다.
-- 검색 응답과 사진가·원본 URL·추적 URL은 운영 DB `unsplash_searches`에 저장된다. 본문/결의 자동 추천·이미지 평가·자동 다운로드는 활성화하지 않았다. 기존 사진 선택의 해시·중복·원본 해상도·사람 검토 조건과 렌더러의 허구 고지는 유지한다.
-- `/photos ID`의 기존 로컬 후보 미리보기·선택은 유지. AI 요청 버튼은 Puter 무료 비용 검증 미완료를 안내하며 `puter_image_attempts`에 `automatic` / `approved_test` 모드와 차단 사유를 기록한다. 실제 Puter 생성 결과·사용량 기록과 미리보기·재생성은 아직 구현/검증 완료 상태가 아니다.
-- Node 22 / 공식 `@heyputer/puter.js` 2.6.5, `init(PUTER_AUTH_TOKEN)` 사용. 원본 모델/잔액 조회 응답은 git 제외 `data/puter-inspection.json`에 권한 0600으로 저장했다. SDK가 stdout을 flush하기 전에 종료하여 긴 JSON이 잘리는 문제를 수정했다.
-- 실제 txt2img 호출 코드와 결제·구매 경로는 없다. 무료 전용 비용 검증이 해결되기 전에는 환경변수 변경이나 버튼 클릭으로 생성할 수 없다. 목표 일일 상한 2회·자동 재시도 0회보다 강하게 0회로 제한한다. 임의 가격표나 잔액을 넣어 우회하지 않는다.
+기획 승인 → `/photos ID` → 본문/결의 참고 사진 탐색, AI 생성 또는 직접 업로드 → 후보 확대 확인 → 각 슬롯의 검토 완료/선택 → 서로 다른 두 사진이 준비되면 기존 render 작업 재개 → 카드 앨범 → 최종 승인.
 
-## 정책 적합성
+- 직접 업로드: 업로드 버튼 또는 `/upload ID VERSION`, 본인 소유/허락을 확인한 사진을 캡션 `OWN`으로 전송. 원본 문서 전송 권장. JPEG/PNG/WebP, 20MB 이하, 짧은 변 512px 이상. 원본 보존, EXIF 방향 보정, 4:5 크롭 후 Lanczos 리사이즈. 실제 원본 크기와 확대 여부를 표시한다. 최종 1080×1350 파일도 품질 검사를 통과해야 한다. 업로드 자체는 슬롯 선택/최종 승인이 아니다.
+- AI 생성: 본문/결의 생성 → 모델 선택 → durable worker 요청. 후보 생성 후 기존 사진 선택 버튼으로 검토, 재생성 버튼은 해당 후보/버전에 묶인다. 중복 클릭은 같은 작업으로 처리한다.
+- Unsplash: 두 슬롯의 참고 검색 버튼, 다른 검색어 버튼, `/images ID 검색어`. 한국어 기획의 장소/인물/행동/감정/시간/사물/구도/분위기를 로컬 용어사전과 기존 영어 image_queries로 추출/변환하고 3~5개 전략을 제공한다. 한 번 클릭에 한 전략씩 조회한다. 번역은 범용 번역기가 아니며 사전에 없는 구체적 소재는 `/images`의 영어 검색어로 보완한다.
+- 결과의 설명문 관련성 80%, 4:5 크롭 보존율 20%로 정렬. 원본 크기 조건을 통과해도 관련성이 높다고 판단하지 않는다. 실사 품질·자연스러움·감정·얼굴은 자동 검증했다고 주장하지 않으며 링크에서 사람이 검토한다. 동일 ID는 중복 제거한다.
 
-공식 근거:
+## Puter 구현·비용 경계
 
-- https://unsplash.com/api-terms
-- https://unsplash.com/documentation
-- https://help.unsplash.com/en/articles/2511271-guideline-hotlinking-images
-- https://help.unsplash.com/en/collections/1451694-api-guidelines
+공식 `@heyputer/puter.js` 2.6.5, Node 22, `init(PUTER_AUTH_TOKEN)`. JS dispatch는 한 요청에서 txt2img 정확히 한 번만 호출한다. 실패·인증 오류·usage 조회 실패 시 생성 재시도나 다른 모델 자동 호출은 없다. SDK 호출 결과의 data URI 또는 승인된 공개 호스트 URL을 수신해 포맷/픽셀/크기 검증 후 원본·카드용 파일을 별도 저장한다. URL은 HTTPS/호스트/공개 DNS 검증 및 redirect 차단, 크기 제한을 적용한다.
 
-검색과 링크 안내는 구현했다. Unsplash는 모든 이미지 표시에서 API의 urls 핫링크를 요구하며 사진가 및 Unsplash 링크 출처 표시, 선택/사용에 해당하는 다운로드 이벤트 보고가 필요하다. 로컬 합성 파일을 Telegram 및 Instagram에 업로드하면 API 핫링크 표시가 유지되지 않는다. 자동화의 적합성과 합성·재게시/대체 뷰 추적 허용 여부를 Unsplash API 팀에 확인하기 전 자동 활성화하지 않는다. 연락은 수행하지 않았다. 검색만으로 다운로드 이벤트를 허위 발생시키지 않는다. `track_download`도 사용 승인 전 차단한다. 일반 Unsplash 사진 라이선스만으로 API 계약 준수를 추정하지 않는다.
+`puter_image_attempts`는 이전 테이블을 보존하며 request_key 유일성, 모델·프롬프트·모드·서울 날짜·요청 상태·원본/결과·비용 견적·호출 전후 usage를 추가 기록한다. SQLite IMMEDIATE 트랜잭션으로 하루 최대 2회 예약, sent/uncertain/cost_overrun 존재 시 추가 호출 차단, 실패/재시작 후 동일 요청 재호출 금지. 결과 불확실 시 새 변형도 차단된다. 자동 생성은 별도 하드 차단한다.
 
-## Puter 인증·비용
+**운영 free_only_quote 검증기는 현재 항상 차단한다.** 공식 사용량 응답은 credits 총량만 보여주고 무료/유료 분리, 결제 수단/유료 잔액으로 넘어가지 않는 강제 제한, 해당 크기의 구속력 있는 최대 비용을 증명하지 못한다. 환경변수로 이를 우회하는 기능은 없다. SDK 실호출 Provider 코드는 구현했지만 실제 생성은 실행하지 않았다. 테스트는 별도 Mock bridge/authorizer를 주입하여 성공·한도·비용 초과·재시작 경로를 검증한다. Mock proof는 Puter의 실제 API 스키마가 아니다.
 
-- https://docs.puter.com/getting-started/
-- https://developer.puter.com/tutorials/puter-auth-token/
-- https://docs.puter.com/Auth/getMonthlyUsage/
-- https://docs.puter.com/Objects/monthlyusage/
-- https://docs.puter.com/rate-limits-and-quotas/
-- https://docs.puter.com/AI/txt2img/
-- https://developer.puter.com/ai/models/
+읽기 전용 재검증: 서버 인증 성공, listModels 972개는 chat 모델 목록이며 이미지 모델 카탈로그로 오인하지 않는다. 계정 응답: monthUsageAllowance=1000, remaining 약999.703, unit=credits, addons={}. 문서 microcents와 단위가 달라 USD/무료 이미지 수로 환산하지 않는다.
 
-서버 인증, getMonthlyUsage, listModels 조회 성공. listModels SDK 소스는 `/puterai/chat/models/details`를 호출하므로 받은 972개를 이미지 생성 지원 모델 목록이라고 간주할 수 없다. 문서의 이미지 모델 디렉터리를 별도 비교했다.
+## 모델 선정 (문서 기반, 실제 생성 품질 비교 전)
 
-실제 allowanceInfo는 `unit: credits`, `monthUsageAllowance: 1000`, `remaining: 약 999.724`, `addons: {}`였다. 문서의 microcents 설명과 다르므로 USD로 환산하지 않았다. 무료 잔액이라는 보장, 특정 크기/모델의 최대 비용, 무료 한도 소진 후 유료 크레딧 차감 차단을 확인하지 못했다. 무인 생성은 차단한다. 사용자 테스트 승인도 자동 생성 승인이 되지 않는다.
+| 용도 | 모델/옵션 | 문서상 출력 범위 | 가격 근거/한계 |
+| --- | --- | --- | --- |
+| 기본 | xAI `grok-imagine-image`, resolution=2k, aspect_ratio=4:5 | 1K/2K, 여러 비율; 2K는 최대 2048 수준 | 디렉터리 $0.02/image는 참고값. 해당 2K 요청 최대 소모량/무료 적용 미확정 |
+| 대체 | Cloudflare `@cf/black-forest-labs/flux-2-dev`, 1080×1350, 25 steps | 256~1920/변; 직접 요청 가능 | FLUX.2 Dev 디렉터리 $0.03/image는 provider/steps별 확정 견적이 아님 |
 
-문서상 비교 후보 (품질은 직접 생성 비교하지 않았음; 가격은 게시된 기초 단위이며 요청 견적이 아님):
+Grok은 지시 이행/속도/2K 지원을 이유로, FLUX.2 Dev는 직접 크기·다른 provider·사물 디테일 제어를 이유로 선정했다. 실제 한국 일상 실사 품질·지연은 미검증이며 어느 모델도 무료라고 가정하지 않는다. Schnell 고정 1024²는 기본 후보에서 제외. Gemini provider는 보존하되 비활성화한다. 본문은 상황 전경, 결의는 다른 각도의 사물/결과 디테일. 한국 일상·자연광·매트 질감·저채도·HDR/광택/텍스트/로고 배제 프롬프트를 기록한다.
 
-| 후보 | 검토 이유 | 디렉터리 참고 가격 |
+공식 근거: [이미지 API](https://docs.puter.com/AI/txt2img/), [모델 디렉터리](https://developer.puter.com/ai/models/), [월 사용량](https://docs.puter.com/Objects/monthlyusage/), [과금/할당량](https://docs.puter.com/rate-limits-and-quotas/).
+
+## Unsplash 정책 판정
+
+| 항목 | 판정 | 현재 구현 |
 | --- | --- | --- |
-| FLUX.2 Pro / Dev | 사물·공간 실사 후보, 단일 FLUX 종속 회피 | $0.03/image |
-| FLUX.2 Klein 9B | 속도·비용 비교 | $0.015/image |
-| GPT Image 2.5 Flare / Sunburst | 장면 지시·편집 비교 후보 | $0.0059/image (1024² low 기준) |
-| Leonardo Lucid Origin | 재질·사진 스타일 비교; 과채도 주의 | 확정 단가 미표시 |
+| API 원본 이미지 표시의 핫링크 | 명시적 제한/필수 요건 | 이미지 재호스팅 없이 출처/사진가 링크로 탐색 |
+| 사진가·Unsplash 출처 표시 | 명시적 필수 요건 | UTM referral 사진/사진가 URL, 이름 저장·표시 |
+| 사용자 다운로드/사용 이벤트 | 명시적 추적 의무 | 검색만으로 허위 이벤트를 발생시키지 않음. 이미지 사용 경로 차단 |
+| 일반 라이선스의 수정 | 명시적 허용, 추가 권리 별도 | API 계약을 대체한다고 해석하지 않음 |
+| 창작 파생 이미지 핫링크 예외 | 공식 지침상 조건부 허용 | 예외 존재는 인정. 현재 카드 합성의 충족 여부는 불확실 |
+| 원본 사진을 Telegram sendPhoto로 전송 | 핫링크 요건과 충돌 | 차단 |
+| 현재 카드 합성 및 Instagram 재게시 | 불확실 (파생 창작 기준/추적/출처 위치) | 차단. 정책을 우회하지 않음 |
+| Telegram에서 참고 출처 링크 안내 | 출처 링크 지침에 맞춘 탐색 방식 | 구현. 자동 사진 수집은 비활성 |
 
-1080×1350용 고해상도 출력은 위 기초 가격과 달라질 수 있다. Schnell의 고정 1024² 출력은 기존 원본 해상도 검사에 부적합하다. 한국 일상 공간·자연광·매트 질감·저채도·텍스트/로고/HDR 배제 프롬프트와 본문 establishing view / 결의 detail view 구분은 기존 prompt_for를 재사용한다.
+[API 약관](https://unsplash.com/api-terms), [핫링크 및 파생 이미지 예외](https://help.unsplash.com/en/articles/2511271-guideline-hotlinking-images), [일반 라이선스](https://unsplash.com/license). API 팀의 확인 전 원본/합성 사진 사용을 활성화하지 않는다. 카드에는 권리가 확인된 사용자 업로드 또는 생성 검증 후의 AI 이미지만 사용한다.
 
-## 환경변수
+## 검증/운영
 
-`/opt/unreal.gov/.env`: `UNSPLASH_ACCESS_KEY`, `PUTER_AUTH_TOKEN`. 기존 외부 호출/일시정지 설정은 그대로 적용한다. 토큰은 argv나 로그에 출력하지 않는다. 실제 생성 활성화 환경변수는 제공하지 않는다.
+- 실행: `.venv/bin/python -m unittest discover -s tests -v`, `node --test tests/puter_bridge.test.mjs`.
+- E2E: `.venv/bin/python scripts/image_e2e.py --send-telegram`. 격리 DB/자체 제작 Mock 이미지/Mock SDK만 사용. 실제 Chromium과 실제 Telegram 최종 테스트 앨범 전송, 격리 DB에서 최종 승인 전환을 검증한다. 실제 Puter 생성/Instagram 게시 기능은 호출하지 않는다. `--send-telegram` 없이 실행하면 외부 전송도 없다.
+- E2E 전달은 durable outbox에 기록하고 결과 불확실 시 자동 재전송하지 않는다. 테스트 메시지에는 운영 승인 버튼을 넣지 않는다.
+- 환경변수: UNSPLASH_ACCESS_KEY, PUTER_AUTH_TOKEN, 기존 Telegram 설정. 별도의 유료 생성 활성화 변수는 없다.
+- 기존 worker의 isolated uncertain 복구 옵션과 승인/큐/단일 polling 잠금은 유지. 스케줄은 매일 18:00 KST 그대로 유지. Instagram/Gemini/자동 AI 생성은 비활성.
+- 실제 생성 테스트를 열기 위한 남은 외부 조건: 공식 무료/유료 분리 응답, 유료 차감 방지 수단, 모델/옵션별 최대 비용. 확인 후 free_only_quote 구현을 갱신하고 Mock 및 별도 승인된 1회 검증을 수행해야 한다.
 
-## 실제 이미지 1장 테스트 절차 (현재 실행 불가)
+### 이번 검증 결과
 
-1. Puter 공식 지원으로 credits 단위·무료 allowance 구분·모델별 해당 크기의 최대 차감액·유료 차감 방지 방법을 확인한다.
-2. 확인된 응답 스키마에 대해 검증기와 원자적 DB 비용 예약/하루 2회 제한/0회 재시도, 결과 불확실 시 재호출 금지를 구현하고 Mock 테스트한다.
-3. 모델을 하나 지정하고 본문 1장에 대한 사용자 승인을 별도로 받는다. 현재 요청은 실제 생성 금지이므로 승인이 아니다.
-4. 승인된 테스트에만 한 번 txt2img를 호출하여 bytes 검사, 원본 해상도·품질·출처/사용량/모델/프롬프트 기록 후 기존 Telegram 검토 경로에 연결한다. 결의 자동 추가 생성·Instagram 게시는 하지 않는다.
+- Python 전체 회귀 166개 통과 (485.288초). 이후 추가한 기존 Puter 원장 보존 마이그레이션 테스트를 포함해 변경 경계 10개 재검증 통과 (77.981초). Python 고유 테스트 총 167개 검증. Node SDK dispatch 4개 통과.
+- SDK 내부 429/gate 자동 재시도도 `config.autoRetry=false`로 끄고, 별도 재인증/검증/업그레이드 UI 경로도 거부하도록 설정했다. 이 설정 후 실제 읽기 전용 서버 인증/usage/972 chat models 조회 성공.
+- Unsplash 실제 읽기 전용 검색에서 원본 크기 적합 후보 20개와 관련성 정렬 확인. 원본 사진 다운로드/Telegram 재호스팅/Instagram 게시 없음.
+- E2E 첫 병행 시도는 Chromium 시작 제한 시간으로 실패했으며 Telegram 전송 이전에 중단. 단독 재실행 성공: Mock SDK 1회 → 원본/가공본 저장 → 사용자 업로드 → 실제 Telegram callback 함수로 슬롯 선택 → 실제 Chromium 5장 렌더 → 1080×1350 PNG/JPEG 검증 → 고정 엔딩 RGB 픽셀 일치 → 격리 DB approved 전환.
+- 최종 테스트 앨범 및 설명 메시지 실제 Telegram 전송 완료: 두 delivery 모두 sent. Puter/이미지 입력은 Mock·자체 제작 테스트 그림이며 실제 AI 사진 품질 검증이 아니다. 사용자 사진을 실제 Telegram에서 수신하는 네트워크 경로는 Mock callback으로 검증했다.
+- 결과: `output/image-e2e-2026-11-09T10-46-24.072231+00-00/result.json`. 격리 DB와 5장 PNG/JPEG, 원본/선택/승인/전송 기록 보존. 공개 이미지 디렉터리에 게시하지 않음.
+- 운영 DB 최초 백업: `backups/preflight-2026-11-09T10-28-48.844459+00-00.sqlite3`. 환경파일도 시작 시 `.env.image-project-*`로 권한0600 백업. 배포 직전 추가 DB 백업 및 기존 selection/uncertain 상태 보존 검증 후 schema 6로 마이그레이션.
 
-현재 실행 가능한 무과금 검증: `.venv/bin/python -m unittest discover -s tests -p test_unsplash_puter.py -v`. 실제 생성 명령을 제공하거나 사용 가능하다고 주장하지 않는다.
-
-## 검증 및 운영 반영
-
-- 전체 unittest: 156개 통과 (397.759초). Unsplash Mock 2건, Puter 인증/차단 Mock 2건 포함. 기존 Telegram 승인·사진 선택·렌더링 경계·고정 허구 고지 회귀 테스트 포함.
-- 허용된 실제 Unsplash 검색은 정확히 1회: 원본 메타데이터 기준 해상도 적합 후보 20개. 사진 다운로드/선택 이벤트는 실행하지 않음.
-- Puter는 실제 서버 인증·모델/사용량 조회만 실행. 이미지 생성·구매·결제·Instagram 실제 게시 0회.
-- npm audit: 취약점 0건. SDK의 postal-mime 의존성을 수정된 4.0.8로 override 고정.
-- 실제 Chromium 5장 모두 저장, 폰트/누락 이미지/레이아웃 넘침 검사 통과. 다만 최초 75초 제한과 단독 실행의 180초 제한 모두 초과: 마지막 실행은 163.7초에 5장 저장 후 browser_close_start에서 종료 제한에 걸림. smoke 전체 성공으로 간주하지 않는다. 렌더러 코드는 변경하지 않았다.
-- 운영 DB는 `backups/pre-unsplash-puter-20261109T095933Z.db`에 SQLite online backup, 권한 0600으로 백업. 환경파일은 `/opt/unreal.gov/.env.pre-unsplash-puter-20261109T101706Z`에 0600 백업.
-- 운영 설정: `IMAGE_PROVIDER=unsplash`, `GEMINI_IMAGE_ENABLED=0`, `AUTO_PHOTO_ACQUIRE=0`, `AUTO_IMAGE_SEARCH=0`, `INSTAGRAM_PUBLISH_ENABLED=0`. Telegram/worker를 재시작하여 검색 및 차단 경로를 반영한다. 기존 대기 작업·승인 기록을 강제 재시도/변경하지 않는다.
-- 남은 작업: Unsplash 합성/자동화 정책 확인, Puter 무료 전용 비용 검증 및 실제 생성·usage ledger/Telegram 생성 미리보기·재생성 구현, Chromium 종료 지연 원인 확인. 현재 결과를 완성된 자동 하이브리드 이미지 시스템으로 간주하지 않는다.
-
-재시작 시 기존 uncertain 후보 작업 1건 때문에 기존 startup preflight가 worker 시작을 차단했다. 작업/체크포인트를 재분류하거나 재시도하지 않고, 점검한 운영 환경에만 `WORKER_ALLOW_ISOLATED_UNCERTAIN=1`을 설정했다. 이 명시적 복구 옵션은 유일한 readiness 오류가 isolated uncertain jobs이고 running jobs / sending 또는 uncertain outbox가 없을 때에만 시작을 허용한다. 설정/DB 오류는 계속 차단하며 claim은 기존대로 queued만 선택한다. 기본값은 꺼짐이다. 별도 DB 회귀 테스트에서 uncertain 상태 보존·자동 재실행 없음·running/설정 오류 차단을 검증했다.
-
-저장된 5장 파일에 대한 별도 검증: 모두 실제 1080×1350 PNG, 마지막 장은 승인된 ending_fixed.png와 RGB 픽셀이 정확히 일치했다. smoke 전체의 종료시간 초과 문제는 여전히 미해결이다.
-
-추가 복구 변경 검증: worker recovery 테스트 1개 통과, 영향받는 preflight 테스트 12개 재실행 통과. 서비스 재시작 후 worker/Telegram/images active, worker/Telegram NRestarts=0 확인. 전체 156개 테스트 실행 후 추가된 복구 변경은 이 두 테스트 묶음으로 검증했으며, 그 후 전체 묶음을 다시 실행한 것은 아니다.
+운영 배포 후 worker/Telegram/images 모두 active, worker/Telegram NRestarts=0 / ExecMainStatus=0, 최근 배포 이후 journal 오류 표식 0건 확인. 매일 18:00 KST 후보 timer 일정 유지. 운영 Puter 생성 원장은 비어 있어 실제 생성 호출 0회를 확인했다. schema 6 마이그레이션 전후 기존 selection 상태/승인 버전과 uncertain 작업이 동일하며 PRAGMA quick_check=ok. 직전 정상 버전은 64daefd이며 배포 DB 백업은 `backups/preflight-2026-11-09T10-53-57.826465+00-00.sqlite3`이다.
