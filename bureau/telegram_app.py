@@ -2,6 +2,7 @@ import json
 from .config import Config
 from .store import Store, kst_day, now
 from .engine import candidate_message, preview_message, plan_message
+from .gemini_images import GeminiBlocked,budget_message
 
 
 def build_app(config):
@@ -38,6 +39,8 @@ def build_app(config):
             elif name=='newcandidates':
                 job=store.schedule(regenerate=True,maximum=config.integer('MAX_CANDIDATE_REGENERATIONS',2),request_key=f'newcandidates:{update.update_id}',source='telegram')
                 payload={'text':f'새 후보 생성 요청 접수: 작업 {job}. 일일 호출 상한이 적용됩니다.'}
+            elif name=='imagebudget':
+                payload={'text':budget_message(config,store)}
             elif name=='photos':
                 from .photo_review import offer
                 rid=int(context.args[0]);r=store.row(rid)
@@ -107,7 +110,16 @@ def build_app(config):
             return
         try:
             parts=query.data.split(':'); action=parts[0]
-            if action=='boring':
+            if action in ('aigen','airegen'):
+                from .gemini_images import schedule
+                jid=schedule(store,config,int(parts[1]),int(parts[2]),parts[3],parts[4])
+                text=f'AI 이미지 요청 작업 {jid}. 비용 예약·일일 한도 확인 후 처리합니다.'
+            elif action=='imagebudget':
+                text=budget_message(config,store)
+            elif action=='photos':
+                from .photo_review import offer
+                offer(store,int(parts[1]),int(parts[2]));text='저장된 사진 후보와 AI 생성 요청 버튼을 확인하세요.'
+            elif action=='boring':
                 cid=int(parts[1])
                 labels=['공감이 안 됨','너무 뻔함','이전 아이디어와 비슷함','웃음 포인트가 약함','기타 — 직접 입력']
                 queue(update,{'text':'재미없음 사유를 선택하세요.','reply_markup':{'inline_keyboard':[[{'text':label,'callback_data':f'boringreason:{cid}:{i}'}] for i,label in enumerate(labels)]}})
@@ -163,6 +175,8 @@ def build_app(config):
             else: raise ValueError('Unknown callback')
             await query.answer('접수 완료')
             queue(update,{'text':text})
+        except GeminiBlocked as exc:
+            await query.answer(str(exc)[:190],show_alert=True)
         except (ValueError,IndexError,TypeError) as exc:
             await query.answer('현재 단계 또는 버전에서 처리할 수 없는 요청입니다.',show_alert=True)
 
@@ -193,9 +207,9 @@ def build_app(config):
         if update and authorized(update): queue(update,{'text':'처리 오류가 발생했습니다. /status 확인 후 관리자에게 작업 ID를 전달하세요.'})
 
     app=ApplicationBuilder().token(e['TELEGRAM_BOT_TOKEN']).build()
-    for name in ('whoami','start','candidates','newcandidates','images','photos','status','preview','revise','review','acceptdraft','retry','resend'):
+    for name in ('whoami','start','candidates','newcandidates','images','photos','imagebudget','status','preview','revise','review','acceptdraft','retry','resend'):
         app.add_handler(CommandHandler(name,command))
-    app.add_handler(CallbackQueryHandler(callback,pattern=r'^(boring|boringreason|photopick|candidate|batchregen|batchreject|planapprove|planedit|imageedit|back|approve|reject|regenerate):'))
+    app.add_handler(CallbackQueryHandler(callback,pattern=r'^(aigen|airegen|imagebudget|photos|boring|boringreason|photopick|candidate|batchregen|batchreject|planapprove|planedit|imageedit|back|approve|reject|regenerate):'))
     app.add_handler(CommandHandler('cancelrevision',cancel_revision))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,revision_message))
     app.add_error_handler(error)

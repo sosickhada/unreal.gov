@@ -72,6 +72,8 @@ class Store:
             ]
             for sql in statements:
                 c.execute(sql)
+            from .gemini_images import migrate as migrate_gemini
+            migrate_gemini(c)
             from .editorial import structure
             for r in c.execute('SELECT id,payload FROM candidates WHERE id NOT IN (SELECT candidate_id FROM idea_structures)').fetchall():
                 parts=structure(json.loads(r['payload']))
@@ -81,6 +83,7 @@ class Store:
             c.execute('INSERT OR IGNORE INTO schema_versions VALUES(2,?)', (now(),))
             c.execute('INSERT OR IGNORE INTO schema_versions VALUES(3,?)', (now(),))
             c.execute('INSERT OR IGNORE INTO schema_versions VALUES(4,?)', (now(),))
+            c.execute('INSERT OR IGNORE INTO schema_versions VALUES(5,?)', (now(),))
 
     @staticmethod
     def event(c, subject, action, detail=''):

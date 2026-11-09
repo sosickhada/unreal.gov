@@ -72,6 +72,7 @@ class Engine:
             elif job['kind']=='draft': self.draft(job,p)
             elif job['kind']=='render': self.render(job,p)
             elif job['kind']=='publish': self.publish(job,p)
+            elif job['kind']=='gemini_image': self.gemini_image(job,p)
             elif job['kind']=='image_search': self.image_search(job,p)
             else: raise ValueError('Unknown job kind')
             state='succeeded'; error=None
@@ -218,7 +219,7 @@ class Engine:
                 with self.store.tx() as c:
                     self.store.notify(c,f'image-invalid:{p["id"]}:{p["revision"]}',{'text':f'사진 재검토 필요: {p["id"]} v{p["revision"]}. 등록 파일·해시·해상도·검토 이력·사진 중복을 확인하세요.'})
                 raise Waiting('Photographic inputs need manual reinspection') from None
-            if set(chosen)!=set(SLOTS) and self.config.env.get('AUTO_PHOTO_ACQUIRE')=='1':
+            if set(chosen)!=set(SLOTS) and (self.config.env.get('AUTO_PHOTO_ACQUIRE')=='1' or self.config.env.get('GEMINI_IMAGE_ENABLED')=='1'):
                 from .images import acquire_photos,PhotoRateLimited,PhotoScreeningUnavailable
                 try: acquired=acquire_photos(self.config,draft,chosen,
                     lambda name,call,ambiguous=False,paid=False:self.step(job,name,call,ambiguous,paid),p['id'],p['revision'],p.get('exclude_photo_ids',()))
@@ -238,7 +239,7 @@ class Engine:
                 if chosen:
                     c.execute('INSERT OR REPLACE INTO image_inputs VALUES(?,?,?,?)',(p['id'],p['revision'],json.dumps({'photos':chosen}),now()))
                 if set(chosen)!=set(SLOTS):
-                    self.store.notify(c,f'image-review:{p["id"]}:{p["revision"]}',{'text':f'사진 수동 검토 필요: {p["id"]} v{p["revision"]}. 본문/중간 결의에 서로 다른 고해상도 실사 2장을 등록하세요. 저해상도·AI·명확한 얼굴 사진은 사용하지 않습니다.'})
+                    self.store.notify(c,f'image-review:{p["id"]}:{p["revision"]}',{'text':f'사진 검토 필요: {p["id"]} v{p["revision"]}. 본문/결의에 서로 다른 고해상도 이미지를 선택하세요. /photos {p["id"]} 에서 Pixabay·AI 후보를 확인하세요.'})
                     if self.config.env.get('AUTO_IMAGE_SEARCH')=='1' and self.config.env.get('AUTO_PHOTO_ACQUIRE')!='1':
                         for slot in SLOTS:
                             query=draft.get('image_queries',{}).get(slot)
@@ -246,13 +247,22 @@ class Engine:
                                 self.store.enqueue(c,f'image-search:{p["id"]}:{p["revision"]}:{slot}','image_search',dict(p,slot=slot,query=query))
             if set(chosen)!=set(SLOTS):
                 from .generated_images import generate_local
+                from .gemini_images import GeminiImages, GeminiBlocked
                 for slot in SLOTS:
                     if slot in chosen: continue
-                    result=self.step(job,'local_image_'+slot,lambda slot=slot:generate_local(self.config,draft,slot,Path(self.config.db).parent/'data/generated'/f'{p["id"]}-{p["revision"]}-{slot}.png'))
-                    with self.store.tx() as c:
-                        self.store.event(c,p['id'],'generated_image_fallback',json.dumps(result,ensure_ascii=False))
-                        if result.get('available'):
-                            self.store.notify(c,f'generated-preview:{p["id"]}:{p["revision"]}:{slot}',{'text':f'AI 생성 후보: 관련성·해상도·손/얼굴·구도 및 모델 라이선스를 직접 검토한 후 /photos {p["id"]} 명령으로 선택하세요. 자동 승인되지 않습니다.','files':[result['path']],'sha256':[result['sha256']]})
+                    if self.config.env.get('GEMINI_IMAGE_ENABLED')=='1':
+                        try:
+                            # The Gemini ledger owns paid-call idempotency and recovery.
+                            self.step(job,'gemini_image_'+slot,lambda slot=slot:GeminiImages(self.config).generate(draft,slot))
+                        except GeminiBlocked as exc:
+                            with self.store.tx() as c:
+                                self.store.notify(c,f'gemini-blocked:{job["id"]}:{slot}',{'text':str(exc)+' /photos '+str(p['id'])+' 에서 기존 사진 또는 수동 사진을 선택하세요.'})
+                    else:
+                        result=self.step(job,'local_image_'+slot,lambda slot=slot:generate_local(self.config,draft,slot,Path(self.config.db).parent/'data/generated'/f'{p["id"]}-{p["revision"]}-{slot}.png'))
+                        with self.store.tx() as c:
+                            self.store.event(c,p['id'],'generated_image_fallback',json.dumps(result,ensure_ascii=False))
+                from .photo_review import offer
+                offer(self.store,p['id'],p['revision'])
                 raise Waiting('Two distinct reviewed topic photographs required')
             draft['slides'][1]['background_image']=chosen['content']['path']
             draft['slides'][2]['background_image']=chosen['resolution_extra']['path']
@@ -276,12 +286,24 @@ class Engine:
             if provenance.get('photos'):
                 approval['text']+='\n\n사진 출처 및 검토 근거:'
                 for slot,photo in provenance['photos'].items():
-                    mode='자동 시각 검사 통과 · 사람 검토 전' if photo.get('selection_policy')=='automated-preview-v1' else '등록된 수동 검토 사진'
+                    mode='Gemini AI 생성 · 사용자 검토 완료' if photo.get('provider')=='gemini' else ('자동 시각 검사 통과 · 사람 검토 전' if photo.get('selection_policy')=='automated-preview-v1' else '등록된 수동 검토 사진')
                     approval['text']+=f'\n{slot}: {mode}\n{photo.get("source_url", "")}\n{photo.get("license_url", "")}'
                 approval['text']+='\n자동 검사는 권리·AI 여부를 보증하지 않습니다. 부적절하면 이미지 수정을 선택하세요.'
 
             approval['after_delivery']=f'media:{p["id"]}:{p["revision"]}'
             self.store.notify(c,f'approval:{p["id"]}:{p["revision"]}',approval)
+
+    def gemini_image(self,job,p):
+        from .gemini_images import GeminiImages, GeminiBlocked
+        from .photo_review import offer
+        r=self.store.row(p['id'])
+        if r['revision']!=p['revision'] or r['status']!='draft_ready': raise Waiting('Stale image request')
+        try:
+            self.step(job,'gemini_image_'+p['slot'],lambda:GeminiImages(self.config).generate(json.loads(r['draft_json']),p['slot'],p.get('variant','0')))
+        except GeminiBlocked as exc:
+            with self.store.tx() as c: self.store.notify(c,f'gemini-manual-blocked:{job["id"]}',{'text':str(exc)})
+            raise Waiting('Gemini generation blocked; use existing or manual images','gemini_image_blocked') from None
+        offer(self.store,p['id'],p['revision'])
 
     def image_search(self, job, p):
         from .images import pixabay_search
