@@ -487,7 +487,7 @@ async def _render(draft, prefix, progress=None):
                         html_path = Path(temp_html.name)
                     mark('navigation_start', page=i+1, html_bytes=len(markup.encode()))
                     try:
-                        await page.goto(html_path.as_uri(), wait_until='load', timeout=15000)
+                        await page.goto(html_path.as_uri(), wait_until='load', timeout=45000)
                     finally:
                         html_path.unlink(missing_ok=True)
                     mark('markup_loaded', page=i+1)
@@ -515,7 +515,7 @@ async def _render(draft, prefix, progress=None):
                       });
                       const brokenImages = decoded.some(ok => !ok) || [...document.images].some(img => !img.complete || img.naturalWidth === 0);
                       return {fonts, boxes, brokenImages, overflow:boxes.some(b => b.overflow)};
-                    }""", {'ending':kind == 'ending', 'body':needs_file}), timeout=10)
+                    }""", {'ending':kind == 'ending', 'body':needs_file}), timeout=30)
                     mark('layout_checked', page=i+1, **validation)
                     if not all(validation['fonts'].values()):
                         raise RuntimeError('Approved Korean font failed to load')
