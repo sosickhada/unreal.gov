@@ -197,6 +197,8 @@ class GeminiImages:
                         code='http_'+str(response.status_code)
                         self.finish(aid,'failed',code)
                         if response.status_code==429 and reserved['attempt']<q['retries']: continue
+                        if response.status_code==429:
+                            raise GeminiBlocked('Gemini 이미지 생성이 제한되었습니다 (HTTP 429). 할당량 또는 결제 상태 확인 필요: Google AI Studio에서 해당 API 키 프로젝트의 유료 티어·이미지 생성 할당량·사용량을 확인하세요. 429만으로 결제 미연결과 일시적인 속도 제한을 구분할 수 없습니다. 비용 예약은 유지합니다.')
                         raise GeminiBlocked('Gemini API 요청을 처리하지 못했습니다 ('+code+'). 자동 환급하지 않습니다.')
                     data=bytearray()
                     for chunk in response.iter_content(65536):

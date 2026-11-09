@@ -97,14 +97,30 @@ class GeminiTests(unittest.TestCase):
     def test_zero_retries_blocks_429_replay_after_restart(self):
         cfg=Config(self.db,dict(self.env,GEMINI_IMAGE_MAX_RETRIES='0'))
         self.http.post.return_value=self.response(429)
+        self.http.post.return_value.iter_content.return_value=[b'{"error":{"message":"OFFLINE_KEY_SENTINEL"}}']
         for _ in range(2):
-            with self.assertRaises(GeminiBlocked):
+            with self.assertRaises(GeminiBlocked) as error:
                 GeminiImages(cfg,self.http,self.at).generate(DRAFT,'content')
+            self.assertNotIn('OFFLINE_KEY_SENTINEL',str(error.exception))
+        # The initial failure offers actionable guidance without claiming a cause.
+        # A later replay is blocked by the existing retry ledger.
+        self.http.post.return_value.close.assert_called_once()
         self.assertEqual(self.http.post.call_count,1)
         rows=self.rows('gemini_image_attempts')
         self.assertEqual(len(rows),1)
         self.assertEqual(rows[0]['error_code'],'http_429')
         self.assertGreater(rows[0]['reserved_krw'],0)
+    def test_429_guidance_without_unverified_billing_claim(self):
+        cfg=Config(self.db,dict(self.env,GEMINI_IMAGE_MAX_RETRIES='0'))
+        self.http.post.return_value=self.response(429)
+        with self.assertRaises(GeminiBlocked) as error:
+            GeminiImages(cfg,self.http,self.at).generate(DRAFT,'content')
+        message=str(error.exception)
+        self.assertIn('HTTP 429',message)
+        self.assertIn('할당량 또는 결제 상태 확인 필요',message)
+        self.assertIn('429만으로',message)
+        self.assertIn('비용 예약은 유지',message)
+        self.assertEqual(self.http.post.call_count,1)
     def test_zero_retries_blocks_invalid_image_replay_after_restart(self):
         cfg=Config(self.db,dict(self.env,GEMINI_IMAGE_MAX_RETRIES='0'))
         self.http.post.return_value=self.response(image=b'not an image')
@@ -161,6 +177,26 @@ class GeminiPipelineTests(unittest.TestCase):
             c.execute("INSERT INTO selections(id,candidate_number,candidate_title,status,revision,draft_json) VALUES(4,1,'offline','draft_ready',1,?)",(json.dumps(DRAFT),))
             jid=self.store.enqueue(c,'render:4:1','render',{'id':4,'revision':1})
         return jid
+
+    def test_manual_429_guidance_reaches_telegram_outbox_without_retry(self):
+        from bureau.engine import Engine
+        import test_system as fixtures
+        jid=self.pending()
+        with self.store.tx() as c:c.execute("UPDATE jobs SET state='waiting' WHERE id=?",(jid,))
+        cfg=Config(self.db,dict(self.env,GEMINI_IMAGE_MAX_RETRIES='0'))
+        gen=schedule(self.store,cfg,4,1,'content')
+        engine=Engine(cfg,fixtures.FakeClaude(),fixtures.FakeMedia(),fixtures.FakeTelegram(),fixtures.FakeInstagram())
+        with patch('bureau.gemini_images.requests.post',return_value=self.response(429)) as api:
+            self.assertTrue(engine.run_one())
+            self.assertEqual(api.call_count,1)
+        notices=[json.loads(r['payload']) for r in self.rows('outbox') if r['delivery_key']==f'gemini-manual-blocked:{gen}']
+        self.assertEqual(len(notices),1)
+        self.assertIn('할당량 또는 결제 상태 확인 필요',notices[0]['text'])
+        self.assertNotIn('SENTINEL',notices[0]['text'])
+        self.assertFalse(notices[0].get('files'))
+        self.assertEqual([r['state'] for r in self.rows('jobs') if r['id']==gen],['waiting'])
+        self.assertEqual(self.store.row(4)['status'],'draft_ready')
+        self.assertEqual(len(self.rows('gemini_image_attempts')),1)
 
     def test_pixabay_exhaustion_gemini_preview_selection_render(self):
         from PIL import ImageOps
