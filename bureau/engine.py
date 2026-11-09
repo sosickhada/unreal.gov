@@ -219,7 +219,7 @@ class Engine:
                 with self.store.tx() as c:
                     self.store.notify(c,f'image-invalid:{p["id"]}:{p["revision"]}',{'text':f'사진 재검토 필요: {p["id"]} v{p["revision"]}. 등록 파일·해시·해상도·검토 이력·사진 중복을 확인하세요.'})
                 raise Waiting('Photographic inputs need manual reinspection') from None
-            if set(chosen)!=set(SLOTS) and (self.config.env.get('AUTO_PHOTO_ACQUIRE')=='1' or self.config.env.get('GEMINI_IMAGE_ENABLED')=='1'):
+            if set(chosen)!=set(SLOTS) and self.config.env.get('IMAGE_PROVIDER')=='gemini-legacy' and (self.config.env.get('AUTO_PHOTO_ACQUIRE')=='1' or self.config.env.get('GEMINI_IMAGE_ENABLED')=='1'):
                 from .images import acquire_photos,PhotoRateLimited,PhotoScreeningUnavailable
                 try: acquired=acquire_photos(self.config,draft,chosen,
                     lambda name,call,ambiguous=False,paid=False:self.step(job,name,call,ambiguous,paid),p['id'],p['revision'],p.get('exclude_photo_ids',()))
@@ -239,8 +239,8 @@ class Engine:
                 if chosen:
                     c.execute('INSERT OR REPLACE INTO image_inputs VALUES(?,?,?,?)',(p['id'],p['revision'],json.dumps({'photos':chosen}),now()))
                 if set(chosen)!=set(SLOTS):
-                    self.store.notify(c,f'image-review:{p["id"]}:{p["revision"]}',{'text':f'사진 검토 필요: {p["id"]} v{p["revision"]}. 본문/결의에 서로 다른 고해상도 이미지를 선택하세요. /photos {p["id"]} 에서 Pixabay·AI 후보를 확인하세요.'})
-                    if self.config.env.get('AUTO_IMAGE_SEARCH')=='1' and self.config.env.get('AUTO_PHOTO_ACQUIRE')!='1':
+                    self.store.notify(c,f'image-review:{p["id"]}:{p["revision"]}',{'text':f'사진 검토 필요: {p["id"]} v{p["revision"]}. 본문/결의에 서로 다른 고해상도 이미지를 선택하세요. /photos {p["id"]} 에서 저장된 사진을 검토하세요. Unsplash는 /images ID 검색어로 링크 검색만 가능하며 Puter 생성은 비용 확인 전 차단됩니다.'})
+                    if self.config.env.get('IMAGE_PROVIDER')=='gemini-legacy' and self.config.env.get('AUTO_IMAGE_SEARCH')=='1' and self.config.env.get('AUTO_PHOTO_ACQUIRE')!='1':
                         for slot in SLOTS:
                             query=draft.get('image_queries',{}).get(slot)
                             if slot not in chosen and query:
@@ -250,7 +250,7 @@ class Engine:
                 from .gemini_images import GeminiImages, GeminiBlocked
                 for slot in SLOTS:
                     if slot in chosen: continue
-                    if self.config.env.get('GEMINI_IMAGE_ENABLED')=='1':
+                    if self.config.env.get('IMAGE_PROVIDER')=='gemini-legacy' and self.config.env.get('GEMINI_IMAGE_ENABLED')=='1':
                         try:
                             # The Gemini ledger owns paid-call idempotency and recovery.
                             self.step(job,'gemini_image_'+slot,lambda slot=slot:GeminiImages(self.config).generate(draft,slot))
@@ -294,6 +294,8 @@ class Engine:
             self.store.notify(c,f'approval:{p["id"]}:{p["revision"]}',approval)
 
     def gemini_image(self,job,p):
+        if self.config.env.get('IMAGE_PROVIDER')!='gemini-legacy':
+            raise Waiting('Legacy Gemini provider disabled','gemini_image_blocked')
         from .gemini_images import GeminiImages, GeminiBlocked
         from .photo_review import offer
         r=self.store.row(p['id'])
@@ -306,16 +308,14 @@ class Engine:
         offer(self.store,p['id'],p['revision'])
 
     def image_search(self, job, p):
-        from .images import pixabay_search
+        from .unsplash import search as unsplash_search
         if 'revision' in p:
-            current=self.store.row(p['id'])
-            if current['revision']!=p['revision'] or current['status']!='draft_ready':
-                raise Waiting('Photo search version changed')
-        result=self.step(job,'pixabay_search',lambda:pixabay_search(self.config,p['query']))
+            raise Waiting('Automated Unsplash usage awaits policy clarification','unsplash_policy_blocked')
+        result=self.step(job,'unsplash_search',lambda:unsplash_search(self.config,p['query']))
         lines=[f'사진 검색: 게시물 {p["id"]}. 자동 얼굴 검출/라이선스 승인이 아닙니다.']
         for item in result[:5]:
-            lines.append(f'Pixabay ID {item["id"]}: {item["source_url"]}')
-        lines.append('관리자가 사진을 확인한 뒤 download-image → attach-image로 원본 해상도·권리·관련성·얼굴 검토를 등록하세요. 미충족 시 다른 합법적 소스의 수동 사진을 등록하세요.')
+            lines.append(f'Unsplash {item["id"]}: {item["source_url"]} — {item["attribution"]} {item["photographer_url"]}')
+        lines.append('Unsplash 핫링크 정책 확인 전 카드 합성·Telegram 사진 전송·Instagram 재게시를 차단합니다. 링크에서 후보를 검토하세요.')
         with self.store.tx() as c:
             self.store.notify(c,f'images:{job["id"]}',{'text':'\n'.join(lines)})
         if not result: raise Waiting('No suitable image candidates; manual review required')

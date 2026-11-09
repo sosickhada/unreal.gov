@@ -1,0 +1,11 @@
+{
+  "name": "unreal-image-bridge",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@heyputer/puter.js": "2.6.5"
+  },
+  "overrides": {
+    "postal-mime": "4.0.8"
+  }
+}

@@ -29,8 +29,8 @@ def offer(store, rid, revision):
                 slot=photo['slot']
                 store.notify(c,delivery+':regenerate',{'after_delivery':delivery,'text':'이 AI 이미지를 다시 생성하면 새 호출·비용이 예약됩니다. 중복 클릭은 한 작업으로 처리합니다.', 'reply_markup':{'inline_keyboard':[[{'text':'AI 이미지 재생성','callback_data':f'airegen:{rid}:{revision}:{slot}:{key}'}]]}})
             count+=1
-        store.notify(c,f'photo-actions:{rid}:{revision}',{'text':'Pixabay 후보를 검토하거나 AI 생성을 요청하세요. 생성은 활성화·예산·일일 한도 확인 후 실행됩니다.', 'reply_markup':{'inline_keyboard':[
-            [{'text':'Pixabay 사진 후보','callback_data':f'photos:{rid}:{revision}'}],
+        store.notify(c,f'photo-actions:{rid}:{revision}',{'text':'Unsplash 검색은 링크로 검토하세요. Puter 생성은 무료 전용 비용 검증 전 차단됩니다. 기존 검토 사진 선택은 가능합니다.', 'reply_markup':{'inline_keyboard':[
+            [{'text':'저장된 사진 후보','callback_data':f'photos:{rid}:{revision}'}],
             [{'text':'본문 AI 생성','callback_data':f'aigen:{rid}:{revision}:content:0'},{'text':'결의 AI 생성','callback_data':f'aigen:{rid}:{revision}:resolution_extra:0'}],
             [{'text':'남은 AI 생성 횟수','callback_data':'imagebudget:0'}]]}})
         return count

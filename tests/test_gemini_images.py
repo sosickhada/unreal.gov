@@ -26,7 +26,7 @@ class GeminiTests(unittest.TestCase):
     def setUp(self):
         self.net=patch.object(socket.socket,'connect',side_effect=AssertionError('NO NETWORK'));self.net.start()
         self.tmp=tempfile.TemporaryDirectory();self.db=Path(self.tmp.name)/'test.db';self.store=Store(self.db);self.store.migrate()
-        self.env={'ENABLE_EXTERNAL_CALLS':'1','GEMINI_IMAGE_ENABLED':'1','GEMINI_API_KEY':'OFFLINE_KEY_SENTINEL'}
+        self.env={'IMAGE_PROVIDER':'gemini-legacy','ENABLE_EXTERNAL_CALLS':'1','GEMINI_IMAGE_ENABLED':'1','GEMINI_API_KEY':'OFFLINE_KEY_SENTINEL'}
         self.config=Config(self.db,self.env);self.at=dt.datetime(2026,11,9,tzinfo=dt.timezone.utc)
         self.prices=patch('bureau.gemini_images.pricing',side_effect=lambda cfg,at=None:pricing(cfg,at or self.at));self.prices.start()
         self.http=Mock();self.http.post.return_value=self.response()
@@ -249,7 +249,7 @@ class GeminiPipelineTests(unittest.TestCase):
         with self.assertRaises(GeminiBlocked):schedule(self.store,self.config,4,1,'content','999')
         self.assertEqual(len(self.rows('gemini_image_attempts')),0)
 
-    def test_telegram_requests_queue_only_and_budget_button(self):
+    def test_telegram_puter_request_blocks_generation_and_budget_button(self):
         import asyncio
         from types import SimpleNamespace as NS
         from unittest.mock import AsyncMock
@@ -260,10 +260,11 @@ class GeminiPipelineTests(unittest.TestCase):
         app=build_app(Config(self.db,env));callback=next(h.callback for h in app.handlers[0] if h.__class__.__name__=='CallbackQueryHandler')
         update=NS(effective_user=NS(id=11),effective_chat=NS(id=22),update_id=300,callback_query=NS(data='aigen:4:1:content:0',answer=AsyncMock()))
         asyncio.run(callback(update,NS()));asyncio.run(callback(update,NS()))
-        self.assertEqual(len([r for r in self.rows('jobs') if r['kind']=='gemini_image']),1)
+        self.assertEqual(len([r for r in self.rows('jobs') if r['kind']=='gemini_image']),0)
+        self.assertTrue(all(r['state']=='blocked' for r in self.rows('puter_image_attempts')))
         update.update_id=301;update.callback_query.data='imagebudget:0';asyncio.run(callback(update,NS()))
         text=' '.join(json.loads(r['payload']).get('text','') for r in self.rows('outbox'))
-        self.assertIn('5,000',text);self.assertNotIn('SENTINEL',text);self.http.post.assert_not_called()
+        self.assertIn('무료 전용',text);self.assertNotIn('SENTINEL',text);self.http.post.assert_not_called()
 
     def test_observed_usage_overrun_halts_month(self):
         q=pricing(self.config,self.at);attempt=self.client.reserve('overrun',q)

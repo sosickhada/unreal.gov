@@ -36,6 +36,8 @@
 
 ## 구성
 
+- [Unsplash·Puter 구현 범위와 정책·비용 차단 사유](docs/unsplash-puter.md)
+
 - [운영 가이드](docs/OPERATIONS.md): 설정, 백업/마이그레이션, timer 전환, 승인, 복구, 보안
 - [Chromium 렌더링 검증](docs/RENDERING.md): 실제 4장/5장 PNG와 자원·성능 제한
 - [QA 및 배포 검증](docs/QA.md): 검증 범위, 남은 운영 검증, 인수 조건

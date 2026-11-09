@@ -30,3 +30,5 @@ public/images/
 
 # Runtime polling lock
 telegram-polling.lock
+
+node_modules/

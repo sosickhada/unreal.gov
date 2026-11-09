@@ -94,10 +94,10 @@ class AutoPhotosTest(unittest.TestCase):
         result=commons_search(self.config,'food containers',http)
         self.assertEqual(len(result),1);self.assertEqual(result[0]['download_url'],'https://upload.wikimedia.org/food.jpg')
         self.assertEqual(license_evidence(result[0])['provider'],'Wikimedia Commons')
-    def test_basic_pixabay_key_uses_licensed_high_resolution_fallback(self):
+    def test_active_search_uses_unsplash_only(self):
         from bureau.images import search_photo_candidates
-        with patch('bureau.images.pixabay_search',return_value=[dict(self.hit(1),high_resolution_available=False)]),patch('bureau.images.commons_search',return_value=[{'id':'commons-1'}]) as commons:
-            self.assertEqual(search_photo_candidates(self.config,'food'),[{'id':'commons-1'}])
+        with patch('bureau.unsplash.search',return_value=[{'id':'unsplash-1'}]) as commons:
+            self.assertEqual(search_photo_candidates(self.config,'food'),[{'id':'unsplash-1'}])
         commons.assert_called_once()
 
     def test_official_thumbnail_host_is_accepted_and_429_stops_downloads(self):
@@ -123,7 +123,7 @@ class AutoPipelineTest(unittest.TestCase):
         self.engine.config=Config(self.path,{'ENABLE_EXTERNAL_CALLS':'1','REQUIRE_TOPIC_IMAGE':'1'})
         self.engine.run_one();job=self.q("SELECT id,state FROM jobs WHERE kind='render'")[0]
         self.assertEqual(job['state'],'waiting')
-        self.engine.config=Config(self.path,{'ENABLE_EXTERNAL_CALLS':'1','REQUIRE_TOPIC_IMAGE':'1','AUTO_PHOTO_ACQUIRE':'1'})
+        self.engine.config=Config(self.path,{'ENABLE_EXTERNAL_CALLS':'1','REQUIRE_TOPIC_IMAGE':'1','AUTO_PHOTO_ACQUIRE':'1','IMAGE_PROVIDER':'gemini-legacy'})
         photos={slot:{'path':slot,'sha256':slot,'source_url':'https://pixabay.com/photos/test/','license_url':LICENSE_URL} for slot in ('content','resolution_extra')}
         with patch('bureau.images.acquire_photos',return_value={'photos':photos,'attempts':[],'candidate_links':[]}):
             resume(self.store,job['id']);self.engine.run_one()
@@ -133,7 +133,7 @@ class AutoPipelineTest(unittest.TestCase):
         self.assertEqual(asset['image_provenance']['photos'],photos)
     def test_exhaustion_requests_user_photo_choice_and_image_edit_is_allowed(self):
         cid=self.candidates();rid=self.store.select(cid);self.engine.run_one();self.store.accept_draft(rid,1)
-        self.engine.config=Config(self.path,{'ENABLE_EXTERNAL_CALLS':'1','REQUIRE_TOPIC_IMAGE':'1','AUTO_PHOTO_ACQUIRE':'1'})
+        self.engine.config=Config(self.path,{'ENABLE_EXTERNAL_CALLS':'1','REQUIRE_TOPIC_IMAGE':'1','AUTO_PHOTO_ACQUIRE':'1','IMAGE_PROVIDER':'gemini-legacy'})
         with patch('bureau.images.acquire_photos',return_value={'photos':{},'attempts':[],'candidate_links':['https://pixabay.com/photos/test/']}):self.engine.run_one()
         self.assertEqual(self.q("SELECT state FROM jobs WHERE kind='render'")[0]['state'],'waiting')
         self.assertTrue(self.q("SELECT * FROM outbox WHERE delivery_key LIKE 'photo-choice:%'"))

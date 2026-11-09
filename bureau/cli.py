@@ -106,8 +106,9 @@ def main():
             c.execute('INSERT OR REPLACE INTO image_inputs VALUES(?,?,?,?)',(args.record_id,args.revision,json.dumps({'photos':photos}),now()))
         print('Reviewed image registered; resume/create render job')
     elif args.command in ('image-search','download-image'):
-        from .images import pixabay_search,download_candidate
-        results=pixabay_search(config,args.query)
+        from .images import download_candidate
+        from .unsplash import search as unsplash_search
+        results=unsplash_search(config,args.query)
         if args.command=='image-search': print(json.dumps(results,ensure_ascii=False,indent=2))
         else:
             matches=[r for r in results if r['id']==args.photo_id]
@@ -117,9 +118,9 @@ def main():
             print('Downloaded; manual photographic quality, license, relevance and face review required')
     elif args.command=='worker':
         from .engine import Engine
-        from .operations import readiness
+        from .operations import readiness, worker_start_allowed
         report=readiness(config)
-        if not report['ready_for_worker']:
+        if not worker_start_allowed(config,report):
             print(json.dumps(report,ensure_ascii=False,indent=2))
             raise SystemExit('설정·DB 사전 점검 실패: 위 오류를 해결하세요. API를 호출하지 않았습니다.')
         engine=Engine(config)

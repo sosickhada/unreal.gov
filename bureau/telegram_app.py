@@ -2,7 +2,8 @@ import json
 from .config import Config
 from .store import Store, kst_day, now
 from .engine import candidate_message, preview_message, plan_message
-from .gemini_images import GeminiBlocked,budget_message
+from .gemini_images import GeminiBlocked
+from .puter_images import budget_message
 
 
 def build_app(config):
@@ -111,9 +112,14 @@ def build_app(config):
         try:
             parts=query.data.split(':'); action=parts[0]
             if action in ('aigen','airegen'):
-                from .gemini_images import schedule
-                jid=schedule(store,config,int(parts[1]),int(parts[2]),parts[3],parts[4])
-                text=f'AI 이미지 요청 작업 {jid}. 비용 예약·일일 한도 확인 후 처리합니다.'
+                from .puter_images import generate, PuterBlocked
+                rid, revision = int(parts[1]), int(parts[2])
+                row=store.row(rid)
+                if row['revision']!=revision or row['status']!='draft_ready': raise ValueError('Stale draft')
+                try:
+                    generate(config,json.loads(row['draft_json']),parts[3],approved_test=True)
+                except PuterBlocked as exc:
+                    text=str(exc)
             elif action=='imagebudget':
                 text=budget_message(config,store)
             elif action=='photos':

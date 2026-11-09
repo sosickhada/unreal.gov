@@ -118,6 +118,9 @@ def pixabay_search(config,query,http=requests):
 
 def download_candidate(config,candidate,destination,http=requests):
     config.require_external()
+    if candidate.get('provider')=='Unsplash':
+        from .unsplash import POLICY_BLOCK
+        raise ExternalError(POLICY_BLOCK)
     url=candidate['download_url'];host=urlparse(url).hostname or ''
     if not safe_https(url) or not (host=='pixabay.com' or host.endswith('.pixabay.com') or host in ('upload.wikimedia.org','thumb.wikimedia.org')): raise ValueError('Untrusted image host')
     cooldown=Path(config.db).parent/'data/image-search-cache/download-cooldown.json'
@@ -322,10 +325,5 @@ def commons_search(config,query,http=requests):
 
 
 def search_photo_candidates(config,query):
-    # Basic Pixabay keys only expose <=1280px, insufficient for native 1080x1350.
-    # Never invent a bigger URL or enlarge low-resolution photos.
-    try: hits=pixabay_search(config,query)
-    except ExternalError: hits=[]
-    native=[h for h in hits if h.get('high_resolution_available',True)]
-    if native:return native
-    return commons_search(config,query)
+    from .unsplash import search
+    return search(config,query)

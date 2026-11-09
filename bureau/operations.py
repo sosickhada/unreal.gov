@@ -58,3 +58,17 @@ def readiness(config):
             'external_calls_enabled':e.get('ENABLE_EXTERNAL_CALLS')=='1','public_media_enabled':e.get('ENABLE_PUBLIC_MEDIA')=='1',
             'instagram_enabled':e.get('INSTAGRAM_PUBLISH_ENABLED')=='1','missing_instagram_settings':[key for key in meta if not e.get(key)],
             'account_connections_verified':False}
+
+
+def worker_start_allowed(config, report):
+    """Explicit restart recovery; queued claims never replay isolated unknown jobs."""
+    if report['ready_for_worker']:
+        return True
+    if config.env.get('WORKER_ALLOW_ISOLATED_UNCERTAIN')!='1':
+        return False
+    if report['issues']!=['inflight_or_uncertain_work_requires_inspection']:
+        return False
+    jobs=report['backlog'].get('jobs',{})
+    outbox=report['backlog'].get('outbox',{})
+    return bool(jobs.get('uncertain') and not jobs.get('running') and
+                not outbox.get('sending') and not outbox.get('uncertain'))
