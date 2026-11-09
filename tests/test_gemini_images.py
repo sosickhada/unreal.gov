@@ -94,6 +94,28 @@ class GeminiTests(unittest.TestCase):
         self.assertEqual(len(rows),2);self.assertEqual(self.http.post.call_count,2)
         self.assertEqual(rows[0]['reserved_krw'],rows[1]['reserved_krw'])
         self.assertEqual(status(self.config,self.store,self.at)['remaining_generations'],0)
+    def test_zero_retries_blocks_429_replay_after_restart(self):
+        cfg=Config(self.db,dict(self.env,GEMINI_IMAGE_MAX_RETRIES='0'))
+        self.http.post.return_value=self.response(429)
+        for _ in range(2):
+            with self.assertRaises(GeminiBlocked):
+                GeminiImages(cfg,self.http,self.at).generate(DRAFT,'content')
+        self.assertEqual(self.http.post.call_count,1)
+        rows=self.rows('gemini_image_attempts')
+        self.assertEqual(len(rows),1)
+        self.assertEqual(rows[0]['error_code'],'http_429')
+        self.assertGreater(rows[0]['reserved_krw'],0)
+    def test_zero_retries_blocks_invalid_image_replay_after_restart(self):
+        cfg=Config(self.db,dict(self.env,GEMINI_IMAGE_MAX_RETRIES='0'))
+        self.http.post.return_value=self.response(image=b'not an image')
+        for _ in range(2):
+            with self.assertRaises(GeminiBlocked):
+                GeminiImages(cfg,self.http,self.at).generate(DRAFT,'content')
+        self.assertEqual(self.http.post.call_count,1)
+        rows=self.rows('gemini_image_attempts')
+        self.assertEqual(len(rows),1)
+        self.assertEqual(rows[0]['state'],'rejected')
+        self.assertGreater(rows[0]['reserved_krw'],0)
     def test_invalid_image_retry_preserves_both_reservations(self):
         self.http.post.side_effect=[self.response(image=b'not image'),self.response()]
         self.client.generate(DRAFT,'content')
