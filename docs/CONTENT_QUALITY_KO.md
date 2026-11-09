@@ -44,3 +44,5 @@ Pixabay 검색, 원본 해상도·구도/관련성·시각 품질 검사와 Tele
 - 로컬 생성 모델이 없어 실제 AI 생성·품질 검증을 실행하지 않았다. 무료 클라우드 이미지 API, 유료 이미지 API 및 Instagram 공개 게시는 호출하지 않았다.
 - 코드 커밋 `a00af4a`를 GitHub `feat/full-automation-cloud` 브랜치로 푸시했다.
 - 최종 전체 오프라인 파이프라인도 PASS: `output/offline-acceptance/2026-11-09T06-26-14.295341+00-00/report.json`. 외부 호출 0, Claude 모의 호출 3회(일상/뉴스/기획), Telegram 모의 전송 4회, 실제 Chromium 5장 렌더, 서로 다른 본문/결의 사진, 원본 페이지 1/4/5 픽셀 보존, 승인 후 `publish_waiting` 및 Instagram 실제 게시 0을 확인했다. 합성 사진 fixture의 통과를 실제 사진 품질·라이선스 검증으로 취급하지 않는다.
+- 첫 오프라인 실행은 PASS 보고서를 생성했으나 외부 명령의 240초 종료 경계에 걸렸다(exit 124). 정상 종료까지 확인하기 위해 360초 상한으로 재실행했고 exit 0/PASS로 완료했다. 최종 보고서: `output/offline-acceptance/2026-11-09T06-32-03.703061+00-00/report.json`.
+- Worker 어댑터가 자식 프로세스에 전달하는 `FONT_TIMEOUT_SECONDS` 기본값도 120초로 맞췄다. 어댑터/렌더 경계 20개 테스트 추가 재검증 PASS. Worker를 재시작한 뒤 Worker/Telegram 모두 active/running, NRestarts=0을 확인했다.

@@ -53,7 +53,7 @@ class Media:
             source.write_text(json.dumps(draft,ensure_ascii=False))
             render_env=dict(os.environ)
             render_env['UNREAL_BROWSER_PROFILE_DIR']=self.config.env.get('UNREAL_BROWSER_PROFILE_DIR','/tmp')
-            render_env['UNREAL_FONT_TIMEOUT_SECONDS']=str(self.config.integer('FONT_TIMEOUT_SECONDS',45))
+            render_env['UNREAL_FONT_TIMEOUT_SECONDS']=str(self.config.integer('FONT_TIMEOUT_SECONDS',120))
             if self.config.env.get('RENDER_TRACE_DIR'):
                 trace_root=Path(self.config.env['RENDER_TRACE_DIR']);trace_root.mkdir(parents=True,exist_ok=True)
                 render_env['UNREAL_RENDER_TRACE']=str((trace_root/f'{rid}-v{revision}-trace.json').resolve())
