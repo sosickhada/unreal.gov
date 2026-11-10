@@ -104,8 +104,16 @@ class AdapterTests(unittest.TestCase):
     def test_public_validation_rejects_redirect(self):
         response=Mock(status_code=302,content=b'html',headers={'Content-Type':'text/html'})
         config=self.config(PUBLIC_BASE_URL='https://media.example')
+        from PIL import Image
+        import hashlib
+        files=[];hashes=[]
+        for i in range(5):
+            path=Path(self.tmp.name)/f'{i}.jpg'
+            Image.new('RGB',(1080,1350),(i*40,50,90)).save(path,'JPEG')
+            files.append(str(path));hashes.append(hashlib.sha256(path.read_bytes()).hexdigest())
         with patch('bureau.adapters.requests.get',return_value=response):
-            with self.assertRaises(ExternalError):Media(config).verify({'urls':['https://media.example/a.jpg'],'files':['/tmp/missing'],'sha256':['none']})
+            with self.assertRaises(ExternalError):
+                Media(config).verify({'urls':[f'https://media.example/{i}.jpg' for i in range(5)],'files':files,'sha256':hashes})
     def test_env_loader_no_shell_expansion_and_process_override(self):
         env=Path(self.tmp.name)/'env';env.write_text('CLAUDE_MODEL="model-name"\nEXAMPLE="literal $(touch /tmp/unsafe)"\n')
         with patch.dict('os.environ',{'UNREAL_ENV_FILE':str(env),'CLAUDE_MODEL':'override'},clear=True):
