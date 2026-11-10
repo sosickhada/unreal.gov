@@ -15,8 +15,29 @@ class Claude:
         self.config=config
 
     def validate(self):
+        self.config.require_paid_ai()
         from .preflight import claude_settings
         return claude_settings(self.config.env)
+
+    def generate_role(self,stage,system,prompt,maximum,model=None):
+        from .creative import model_for
+        from .preflight import claude_settings
+        self.config.require_paid_ai();self.config.require_external()
+        selected=model_for(self.config,stage)
+        if model is not None and model!=selected:raise ValueError('Stage model changed before request')
+        claude_settings(dict(self.config.env,CLAUDE_MODEL=selected))
+        if len((system+prompt).encode())+maximum>self.config.integer('TOKENS_RESERVED_PER_CALL',30000):
+            raise ExternalError('Creative request exceeds reserved token bound')
+        from anthropic import Anthropic
+        try:
+            response=Anthropic(api_key=self.config.env['ANTHROPIC_API_KEY'],timeout=60,max_retries=0).messages.create(
+                model=selected,max_tokens=maximum,system=system,messages=[{'role':'user','content':prompt}])
+            if response.stop_reason!='end_turn':raise ExternalError('Creative response incomplete')
+            return {'raw':'\n'.join(b.text for b in response.content if b.type=='text'),
+                    'input_tokens':response.usage.input_tokens,'output_tokens':response.usage.output_tokens,
+                    'model_id':selected,'resolved_model':getattr(response,'model',selected)}
+        except Exception:
+            raise ExternalError('Creative request outcome uncertain; no automatic paid retry') from None
 
     def generate(self, prompt, maximum):
         self.validate()

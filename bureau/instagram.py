@@ -62,7 +62,11 @@ class Instagram:
         with store.tx() as c:
             r=c.execute('SELECT draft_json FROM selections WHERE id=?',(record_id,)).fetchone()
             a=c.execute('SELECT payload FROM assets WHERE selection_id=? AND revision=?',(record_id,revision)).fetchone()
-            validate_official(json.loads(r['draft_json']),json.loads(a['payload']))
+            draft=json.loads(r['draft_json'])
+            validate_official(draft,json.loads(a['payload']))
+        if draft.get('schema_version')==2:
+            from .creative import assert_editorial_evidence
+            assert_editorial_evidence(store,record_id,revision,draft)
 
     def connection_status(self):
         """Read-only connectivity is separate from authorization to publish."""

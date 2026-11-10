@@ -1,0 +1,1462 @@
+{
+  "test_only": true,
+  "provenance": "3 stored drafts + 5 new fictional test topics; improvements are handwritten, no API calls",
+  "cases": [
+    {
+      "id": "shipping",
+      "test_only": true,
+      "before_kind": "stored_claude_draft",
+      "candidate": {
+        "test_only": true,
+        "title": "무료 배송의 보관 기간",
+        "domain": "shopping",
+        "objective": "신청인은 무료 배송 기준까지 2,300원이 모자라 4,800원짜리 세제를 담았다. 집에는 세제가 두 통 남아 있었다.",
+        "a_action": "무료 배송을 받으려고 세제를 추가했다",
+        "b_action": "장바구니는 무료 배송까지 2,300원이 모자란다고 표시했다",
+        "a_claim": "배송비를 내느니 쓸 물건이 남는 편이 낫다",
+        "b_claim": "한 번에 배송할 주문 규모가 필요하다",
+        "issue": "절약한 것은 배송비인가 총지출인가",
+        "comic_anchor": "세제를 추가했다",
+        "conflict_key": "shipping:action-conflict",
+        "hook": "배송비 대신 산 세제는\n언제부터 물건입니까?",
+        "empathy": "내 행동은 작은데 책임과 대기는 더 커지는 상황",
+        "share_reason": "같은 장면을 겪어본 사람과 의견을 나누고 싶다"
+      },
+      "plan": {
+        "facts": {
+          "objective": "신청인은 무료 배송 기준까지 2,300원이 모자라 4,800원짜리 세제를 담았다. 집에는 세제가 두 통 남아 있었다.",
+          "a_action": "무료 배송을 받으려고 세제를 추가했다",
+          "b_action": "장바구니는 무료 배송까지 2,300원이 모자란다고 표시했다",
+          "a_claim": "배송비를 내느니 쓸 물건이 남는 편이 낫다",
+          "b_claim": "한 번에 배송할 주문 규모가 필요하다",
+          "issue": "절약한 것은 배송비인가 총지출인가",
+          "comic_anchor": "세제를 추가했다"
+        },
+        "a_reason": "배송비를 내느니 쓸 물건이 남는 편이 낫다는 입장도 이해할 수 있다",
+        "b_reason": "한 번에 배송할 주문 규모가 필요하다는 입장도 이해할 수 있다",
+        "tension": "절약한 것은 배송비인가 총지출인가",
+        "format": "hearing",
+        "format_reason": "사건의 말과 조치가 만들어 내는 변화에 맞는 포맷"
+      },
+      "verdicts": {
+        "options": [
+          {
+            "id": "v1",
+            "type": "G",
+            "anchor": "세제를 추가했다",
+            "order": "배송비를 피하려 산 물건은 사용한 날부터 물건으로 전환한다. 그전까지는 배송비로 보관한다.",
+            "logic": "사건의 세제를 추가했다가 만든 기대를 구체적 접수 규칙으로 집행한다.",
+            "side_effect": "신청인은 새 세제부터 뜯었다. 배송비를 물건으로 전환하기 위해서였다. 아끼려던 세제의 사용 속도만 빨라졌다.",
+            "criteria": [
+              "action_link",
+              "specific_rule",
+              "side_effect"
+            ],
+            "fit": 5,
+            "surprise": 4,
+            "humor": 4
+          },
+          {
+            "id": "v2",
+            "type": "I",
+            "anchor": "세제를 추가했다",
+            "order": "추가한 세제를 쓸 날짜를 결제 전에 기재한다. 미정이면 배송비 항목으로 우선 보관한다.",
+            "logic": "같은 행동에 다른 행정적 효력을 부여한다.",
+            "side_effect": "절약 신청에 세제 사용 일정이 첨부되기 시작했다.",
+            "criteria": [
+              "action_link",
+              "specific_rule"
+            ],
+            "fit": 4,
+            "surprise": 3,
+            "humor": 3
+          },
+          {
+            "id": "v3",
+            "type": "H",
+            "anchor": "세제를 추가했다",
+            "order": "추가 구매를 요청한 장바구니에 세제의 보관 책임을 배정한다.",
+            "logic": "같은 행동에 다른 행정적 효력을 부여한다.",
+            "side_effect": "이용자는 물건을 받았지만 보관 주체를 찾느라 화면을 닫지 못했다.",
+            "criteria": [
+              "action_link",
+              "specific_rule"
+            ],
+            "fit": 4,
+            "surprise": 3,
+            "humor": 3
+          }
+        ]
+      },
+      "before": {
+        "title": "결제 직전 배송비 사건",
+        "source_url": null,
+        "claims": [],
+        "caption": "이 콘텐츠는 허구의 비현실문제부가 만든 풍자 창작물입니다. 실제 기관, 사건, 인물과 무관하며 출처 URL은 없습니다.",
+        "image_queries": {
+          "content": "shopping cart with detergent bottles on table",
+          "resolution_extra": "empty cardboard box on doorstep, morning light"
+        },
+        "slides": [
+          {
+            "eyebrow": "사건 접수",
+            "headline": "무료 배송까지 2,300원 모자랍니다\n무료 배송은 왜 더 사야 합니까?",
+            "body": ""
+          },
+          {
+            "eyebrow": "가상 사건 경위",
+            "headline": "핵심 쟁점: 절약의 방향이 거꾸로 간 경우",
+            "body": "이 사건은 가상 사건입니다. 신청인 갑은 필요한 물건을 장바구니에 담고 결제 화면을 열었습니다. 배송비 3,000원을 아끼려고 무료 배송 기준 금액을 맞추던 중, 기준보다 2,300원이 모자란 것을 확인했습니다. 그는 필요 없는 세제 한 병을 추가로 담았습니다.",
+            "emphasis": [
+              "2,300원이 모자란"
+            ]
+          },
+          {
+            "eyebrow": "처분/판정안",
+            "headline": "최종 판정: 배송비 회피 부담금 부과",
+            "body": "본 위원회는 가상 사건 기록을 검토하였습니다. 추가 구매한 세제 4,800원을 배송비 회피 부담금으로 분류하는 안을 상정하였습니다. 일부 위원은 세제가 실제로 쓰일 물건이라고 주장하였으나, 기록상 욕실 세제는 이미 두 병이 있었습니다.\n\n결의: 신청인 갑에게 배송비 회피 부담금 4,800원을 부과합니다. 납부는 다음 주문에서 무료 배송 기준을 넘긴 금액과 상계하는 방식으로 처리합니다. 본 처분은 가상 사건에 대한 풍자이며 실제 금액과 무관합니다.",
+            "emphasis": [
+              "배송비 회피 부담금 4,800원"
+            ]
+          },
+          {}
+        ]
+      },
+      "after": {
+        "schema_version": 2,
+        "test_only": true,
+        "title": "무료 배송의 보관 기간",
+        "format": "hearing",
+        "facts_hash": "b52e6d3209ec9156864fc73b2977e448dd6ee5d971053efd8fd25521e921f6d7",
+        "verdict_id": "v1",
+        "caption": "무료 배송의 보관 기간을 접수했습니다. 여러분이라면 어느 쪽 주장에 공감하시나요? 가상 기관 비현실문제부의 풍자 창작입니다. #비현실문제부 #일상풍자 #생활공감",
+        "claims": [],
+        "source_url": null,
+        "slides": [
+          {
+            "role": "cover",
+            "eyebrow": "사건 접수",
+            "headline": "배송비 대신 산 세제는\n언제부터 물건입니까?",
+            "body": "",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "scene",
+            "eyebrow": "사건 경위",
+            "headline": "접수된 행동",
+            "body": "무료 배송까지 2,300원이 모자랐다. 신청인은 세제가 두 통 남아 있는데도 4,800원짜리 세제를 더 담았다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "claims",
+            "eyebrow": "양측 주장",
+            "headline": "충돌하는 두 기준",
+            "body": "신청인: 배송비를 내느니 물건이라도 남는 게 낫습니다.\n접수 화면: 무료인 것은 배송비이며 결제 금액은 아닙니다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "decision",
+            "eyebrow": "판정",
+            "headline": "조치의 적용 범위",
+            "body": "배송비를 피하려 산 물건은 사용한 날부터 물건으로 전환한다. 그전까지는 배송비로 보관한다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "aftermath",
+            "eyebrow": "후폭풍",
+            "headline": "그 뒤의 생활",
+            "body": "신청인은 새 세제부터 뜯었다. 배송비를 물건으로 전환하기 위해서였다. 아끼려던 세제의 사용 속도만 빨라졌다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          }
+        ]
+      },
+      "source_feedback": [],
+      "editor_note": "편집자가 설계한 회귀 예시다. 모델의 실제 생성/평가 결과나 재미 개선의 실증 자료가 아니다."
+    },
+    {
+      "id": "elevator",
+      "test_only": true,
+      "before_kind": "stored_claude_draft",
+      "candidate": {
+        "test_only": true,
+        "title": "열림 요청의 남은 거리",
+        "domain": "public_space",
+        "objective": "승강기 안의 A가 닫힘 버튼을 눌렀다. 복도 끝의 B는 닫히는 문을 향해 손을 흔들며 걸어왔다.",
+        "a_action": "출발하려고 닫힘 버튼을 눌렀다",
+        "b_action": "닫히는 문을 향해 손을 흔들었다",
+        "a_claim": "이미 탄 사람의 출발도 기다려 달라",
+        "b_claim": "눈이 마주쳤으니 잠시 기다려 줄 수 있다",
+        "issue": "탑승 요청은 얼마나 먼 곳까지 유효한가",
+        "comic_anchor": "손을 흔들었다",
+        "conflict_key": "elevator:action-conflict",
+        "hook": "손을 흔든 순간\n승강기는 대기실이 됐다",
+        "empathy": "내 행동은 작은데 책임과 대기는 더 커지는 상황",
+        "share_reason": "같은 장면을 겪어본 사람과 의견을 나누고 싶다"
+      },
+      "plan": {
+        "facts": {
+          "objective": "승강기 안의 A가 닫힘 버튼을 눌렀다. 복도 끝의 B는 닫히는 문을 향해 손을 흔들며 걸어왔다.",
+          "a_action": "출발하려고 닫힘 버튼을 눌렀다",
+          "b_action": "닫히는 문을 향해 손을 흔들었다",
+          "a_claim": "이미 탄 사람의 출발도 기다려 달라",
+          "b_claim": "눈이 마주쳤으니 잠시 기다려 줄 수 있다",
+          "issue": "탑승 요청은 얼마나 먼 곳까지 유효한가",
+          "comic_anchor": "손을 흔들었다"
+        },
+        "a_reason": "이미 탄 사람의 출발도 기다려 달라는 입장도 이해할 수 있다",
+        "b_reason": "눈이 마주쳤으니 잠시 기다려 줄 수 있다는 입장도 이해할 수 있다",
+        "tension": "탑승 요청은 얼마나 먼 곳까지 유효한가",
+        "format": "hearing",
+        "format_reason": "사건의 말과 조치가 만들어 내는 변화에 맞는 포맷"
+      },
+      "verdicts": {
+        "options": [
+          {
+            "id": "v1",
+            "type": "C",
+            "anchor": "손을 흔들었다",
+            "order": "탑승 의사 표시는 남은 걸음 수와 함께 접수한다. 잠깐이라는 말은 거리로 인정하지 않는다.",
+            "logic": "사건의 손을 흔들었다가 만든 기대를 구체적 접수 규칙으로 집행한다.",
+            "side_effect": "복도에서는 인사 대신 숫자가 오갔다. 먼저 탄 사람은 층수보다 남은 걸음 수를 더 많이 들었다.",
+            "criteria": [
+              "action_link",
+              "specific_rule",
+              "side_effect"
+            ],
+            "fit": 5,
+            "surprise": 4,
+            "humor": 4
+          },
+          {
+            "id": "v2",
+            "type": "A",
+            "anchor": "손을 흔들었다",
+            "order": "손을 흔든 요청은 손을 내리는 순간 종료된 것으로 접수한다.",
+            "logic": "같은 행동에 다른 행정적 효력을 부여한다.",
+            "side_effect": "도착 예정자는 걸어오는 동안 계속 손을 들고 있었다.",
+            "criteria": [
+              "action_link",
+              "specific_rule"
+            ],
+            "fit": 4,
+            "surprise": 3,
+            "humor": 3
+          },
+          {
+            "id": "v3",
+            "type": "J",
+            "anchor": "손을 흔들었다",
+            "order": "문 열림 연장은 한 번의 탑승 요청으로만 접수한다. 뒤 사람의 요청은 새 건으로 분리한다.",
+            "logic": "같은 행동에 다른 행정적 효력을 부여한다.",
+            "side_effect": "복도에서 요청 번호가 차례로 불리기 시작했다.",
+            "criteria": [
+              "action_link",
+              "specific_rule"
+            ],
+            "fit": 4,
+            "surprise": 3,
+            "humor": 3
+          }
+        ]
+      },
+      "before": {
+        "title": "승강기 막판 탑승 사건: 닫힘 버튼의 잠정 유예",
+        "source_url": null,
+        "claims": [],
+        "caption": "허구의 비현실문제부가 만든 풍자 창작물입니다. 실제 기관, 사건, 기사와 무관하며 출처 링크는 없습니다.",
+        "image_queries": {
+          "content": "elevator doors closing in an apartment hallway",
+          "resolution_extra": "empty hallway with elevator call button panel"
+        },
+        "slides": [
+          {
+            "eyebrow": "사건 접수",
+            "headline": "닫힘 버튼은 희망 사항입니까?\n열림 버튼은 누가 누릅니까?",
+            "body": ""
+          },
+          {
+            "eyebrow": "가상 사건 경위",
+            "headline": "닫힘 버튼과 열림 버튼 사이의 시간",
+            "body": "이것은 가상 사건입니다. 한 아파트 승강기에서 한 사람이 닫힘 버튼을 누르자, 복도 끝에서 누군가 손을 흔들며 걸어왔습니다. 문은 다시 열렸고, 탑승자는 이유를 묻지 못한 채 기다렸습니다.",
+            "emphasis": [
+              "문은 다시 열렸고"
+            ]
+          },
+          {
+            "eyebrow": "처분/판정안",
+            "headline": "닫힘 버튼은 3초간 희망 사항으로 간주한다",
+            "body": "본 위원회는 가상 사건 기록을 검토하였다. 닫힘 버튼 조작과 이웃의 도착 사이 간격은 약 4초로 추정되었다. 위원들은 탑승자의 조작을 고의로 보기 어렵다는 데 의견을 모았다. 닫힘 버튼이 실제로 문을 닫았는지는 추가 확인이 필요하다.\n\n이에 본 부는 다음과 같이 처분한다. 첫째, 해당 승강기의 닫힘 버튼은 이후 3초간 희망 사항으로 간주하며 그 효력을 잠정 유예한다. 둘째, 탑승자는 다가오는 이웃에게 ‘열림 버튼 누르셔도 됩니다’라고 고지할 수 있으나 의무는 아니다. 본 처분은 출발 기대감이 회복될 때까지 유효하다.",
+            "emphasis": [
+              "3초간 희망 사항으로 간주"
+            ]
+          },
+          {}
+        ]
+      },
+      "after": {
+        "schema_version": 2,
+        "test_only": true,
+        "title": "열림 요청의 남은 거리",
+        "format": "hearing",
+        "facts_hash": "06125462c57676e0a4cbb8855b13701610daa6afe67ce0528654e8a620e0bfcb",
+        "verdict_id": "v1",
+        "caption": "열림 요청의 남은 거리을 접수했습니다. 여러분이라면 어느 쪽 주장에 공감하시나요? 가상 기관 비현실문제부의 풍자 창작입니다. #비현실문제부 #일상풍자 #생활공감",
+        "claims": [],
+        "source_url": null,
+        "slides": [
+          {
+            "role": "cover",
+            "eyebrow": "사건 접수",
+            "headline": "손을 흔든 순간\n승강기는 대기실이 됐다",
+            "body": "",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "scene",
+            "eyebrow": "사건 경위",
+            "headline": "접수된 행동",
+            "body": "닫힘 버튼을 누른 뒤 복도 끝에서 손 하나가 올라왔다. 문은 다시 열렸다. 손의 주인은 아직 걸어오고 있었다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "claims",
+            "eyebrow": "양측 주장",
+            "headline": "충돌하는 두 기준",
+            "body": "탑승자: 기다리는 동안 다음 층 사람들도 기다립니다.\n도착 예정자: 문 앞에서 다시 기다리는 것보다는 같이 타는 게 낫습니다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "decision",
+            "eyebrow": "판정",
+            "headline": "조치의 적용 범위",
+            "body": "탑승 의사 표시는 남은 걸음 수와 함께 접수한다. 잠깐이라는 말은 거리로 인정하지 않는다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "aftermath",
+            "eyebrow": "후폭풍",
+            "headline": "그 뒤의 생활",
+            "body": "복도에서는 인사 대신 숫자가 오갔다. 먼저 탄 사람은 층수보다 남은 걸음 수를 더 많이 들었다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          }
+        ]
+      },
+      "source_feedback": [],
+      "editor_note": "편집자가 설계한 회귀 예시다. 모델의 실제 생성/평가 결과나 재미 개선의 실증 자료가 아니다."
+    },
+    {
+      "id": "minimum",
+      "test_only": true,
+      "before_kind": "stored_claude_draft",
+      "candidate": {
+        "test_only": true,
+        "title": "주문 대표 메뉴 지정",
+        "domain": "food",
+        "objective": "A는 먹고 싶은 주메뉴를 담았지만 최소 주문 금액에 모자라 콜라와 소스를 더 담았다. B는 최소 주문 금액을 적용했다.",
+        "a_action": "최소 금액을 맞추려고 콜라와 소스를 추가했다",
+        "b_action": "주메뉴만으로는 주문 접수를 허용하지 않았다",
+        "a_claim": "먹고 싶은 메뉴는 이미 골랐다",
+        "b_claim": "한 번의 포장과 배송을 준비할 규모가 필요하다",
+        "issue": "주문을 성립시킨 메뉴는 무엇인가",
+        "comic_anchor": "콜라와 소스를 추가했다",
+        "conflict_key": "minimum:action-conflict",
+        "hook": "치킨을 먹으려면\n콜라가 먼저 자격을 갖춰야 했다",
+        "empathy": "내 행동은 작은데 책임과 대기는 더 커지는 상황",
+        "share_reason": "같은 장면을 겪어본 사람과 의견을 나누고 싶다"
+      },
+      "plan": {
+        "facts": {
+          "objective": "A는 먹고 싶은 주메뉴를 담았지만 최소 주문 금액에 모자라 콜라와 소스를 더 담았다. B는 최소 주문 금액을 적용했다.",
+          "a_action": "최소 금액을 맞추려고 콜라와 소스를 추가했다",
+          "b_action": "주메뉴만으로는 주문 접수를 허용하지 않았다",
+          "a_claim": "먹고 싶은 메뉴는 이미 골랐다",
+          "b_claim": "한 번의 포장과 배송을 준비할 규모가 필요하다",
+          "issue": "주문을 성립시킨 메뉴는 무엇인가",
+          "comic_anchor": "콜라와 소스를 추가했다"
+        },
+        "a_reason": "먹고 싶은 메뉴는 이미 골랐다는 입장도 이해할 수 있다",
+        "b_reason": "한 번의 포장과 배송을 준비할 규모가 필요하다는 입장도 이해할 수 있다",
+        "tension": "주문을 성립시킨 메뉴는 무엇인가",
+        "format": "reply",
+        "format_reason": "사건의 말과 조치가 만들어 내는 변화에 맞는 포맷"
+      },
+      "verdicts": {
+        "options": [
+          {
+            "id": "v1",
+            "type": "B",
+            "anchor": "콜라와 소스를 추가했다",
+            "order": "최소 금액을 충족시킨 콜라를 주문 대표로 지정한다. 주메뉴는 동반 접수한다.",
+            "logic": "사건의 콜라와 소스를 추가했다가 만든 기대를 구체적 접수 규칙으로 집행한다.",
+            "side_effect": "리뷰 요청은 콜라에 대해서만 왔다. 정작 먹고 싶던 주메뉴는 기타 항목으로 처리됐다.",
+            "criteria": [
+              "action_link",
+              "specific_rule",
+              "side_effect"
+            ],
+            "fit": 5,
+            "surprise": 4,
+            "humor": 4
+          },
+          {
+            "id": "v2",
+            "type": "D",
+            "anchor": "콜라와 소스를 추가했다",
+            "order": "최소 금액을 채운 사이드 메뉴는 주문 자격 심의 명단에 따로 올린다.",
+            "logic": "같은 행동에 다른 행정적 효력을 부여한다.",
+            "side_effect": "식사보다 접수 명단이 길어졌다.",
+            "criteria": [
+              "action_link",
+              "specific_rule"
+            ],
+            "fit": 4,
+            "surprise": 3,
+            "humor": 3
+          },
+          {
+            "id": "v3",
+            "type": "F",
+            "anchor": "콜라와 소스를 추가했다",
+            "order": "주메뉴 주문은 사이드 메뉴의 동행 동의가 확인된 뒤 접수한다.",
+            "logic": "같은 행동에 다른 행정적 효력을 부여한다.",
+            "side_effect": "주문자는 소스 선택부터 다시 시작했다.",
+            "criteria": [
+              "action_link",
+              "specific_rule"
+            ],
+            "fit": 4,
+            "surprise": 3,
+            "humor": 3
+          }
+        ]
+      },
+      "before": {
+        "title": "최소 주문 충족 사건: 사이드 메뉴의 자격 비용",
+        "source_url": null,
+        "claims": [],
+        "caption": "본 콘텐츠는 허구의 비현실문제부가 만든 풍자 창작물입니다. 실제 기관, 사건, 기사와 관련이 없으며 출처 링크는 없습니다.",
+        "image_queries": {
+          "content": "paper receipt beside food delivery bag on kitchen counter",
+          "resolution_extra": "open refrigerator shelf with side dish containers and bottled drinks"
+        },
+        "slides": [
+          {
+            "eyebrow": "사건 접수",
+            "headline": "배고픔에도 최소 금액이 있습니까?\n메뉴보다 먼저 채워야 하는 장바구니",
+            "body": ""
+          },
+          {
+            "eyebrow": "가상 사건 경위",
+            "headline": "먹고 싶은 메뉴보다 최소 주문 금액이 먼저입니다",
+            "body": "이 사건은 허구의 민원 사례입니다. 민원인 갑 씨는 먹고 싶은 메뉴를 담았으나 최소 주문 금액에 모자라 콜라와 소스를 더 골랐습니다. 민원인은 메뉴 선택보다 주문 조건을 맞추는 데 비용이 든다고 주장합니다.",
+            "emphasis": [
+              "주문 조건"
+            ]
+          },
+          {
+            "eyebrow": "처분/판정안",
+            "headline": "최종 판정",
+            "body": "심의위원회는 민원인이 제출한 장바구니 화면과 주문 메뉴 목록을 검토하였다. 위원 다수는 음식 선택이 제한된 것이 아니라 최소 금액 기준이 먼저 적용되었다는 점에 주목하였다. 다만 이 기준이 메뉴 구성의 자유를 침해하는지에 대해서는 의견이 나뉘었다.\n\n최종 처분은 다음과 같다. 최소 주문 금액을 채우기 위해 추가된 사이드 메뉴는 '주문 자격 취득 비용'으로 분류한다. 해당 항목은 메뉴 선호와 무관한 비용으로 기록하고, 민원인에게는 분류 확인 번호 제1호를 발급한다.",
+            "emphasis": [
+              "주문 자격 취득 비용"
+            ]
+          },
+          {}
+        ]
+      },
+      "after": {
+        "schema_version": 2,
+        "test_only": true,
+        "title": "주문 대표 메뉴 지정",
+        "format": "reply",
+        "facts_hash": "9b551f26d2b233f5356d7280bec77132f51605cde29d6eb695b87605c0005381",
+        "verdict_id": "v1",
+        "caption": "주문 대표 메뉴 지정을 접수했습니다. 여러분이라면 어느 쪽 주장에 공감하시나요? 가상 기관 비현실문제부의 풍자 창작입니다. #비현실문제부 #일상풍자 #생활공감",
+        "claims": [],
+        "source_url": null,
+        "slides": [
+          {
+            "role": "petition",
+            "eyebrow": "국민 민원",
+            "headline": "치킨을 먹으려면\n콜라가 먼저 자격을 갖춰야 했다",
+            "body": "",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "background",
+            "eyebrow": "질문의 배경",
+            "headline": "접수된 행동",
+            "body": "신청인은 주메뉴 하나를 골랐다. 주문 버튼은 켜지지 않았다. 콜라와 소스를 넣자 접수가 가능해졌다. 점포는 한 번의 포장과 배송에 필요한 규모라고 답했다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "response",
+            "eyebrow": "민원 회신",
+            "headline": "충돌하는 두 기준",
+            "body": "회신: 주문을 가능하게 한 메뉴와 먹고 싶은 메뉴는 다를 수 있다. 이 경우 접수를 성립시킨 메뉴에 대표 자격을 부여한다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "implementation",
+            "eyebrow": "집행 방식",
+            "headline": "조치의 적용 범위",
+            "body": "최소 금액을 충족시킨 콜라를 주문 대표로 지정한다. 주메뉴는 동반 접수한다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "aftermath",
+            "eyebrow": "회신 이후",
+            "headline": "그 뒤의 생활",
+            "body": "리뷰 요청은 콜라에 대해서만 왔다. 정작 먹고 싶던 주메뉴는 기타 항목으로 처리됐다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          }
+        ]
+      },
+      "source_feedback": [],
+      "editor_note": "편집자가 설계한 회귀 예시다. 모델의 실제 생성/평가 결과나 재미 개선의 실증 자료가 아니다."
+    },
+    {
+      "id": "laundry",
+      "test_only": true,
+      "before_kind": "handwritten_legacy_baseline",
+      "candidate": {
+        "test_only": true,
+        "title": "세탁 종료 확인 증거",
+        "domain": "home",
+        "objective": "공용 세탁기의 빨래가 끝났다. A는 빨래를 꺼내 달라고 알렸고 B는 알림을 읽었지만 세탁물은 그대로 두었다.",
+        "a_action": "다음 세탁을 하려고 종료 알림을 보냈다",
+        "b_action": "종료 알림을 읽고도 세탁물은 그대로 두었다",
+        "a_claim": "끝난 세탁기는 다음 사람이 써야 한다",
+        "b_claim": "알림을 읽었지만 당장 방을 나갈 수 없었다",
+        "issue": "읽음과 처리 완료는 같은 것인가",
+        "comic_anchor": "종료 알림을 읽고도",
+        "conflict_key": "laundry:action-conflict",
+        "hook": "읽음은 떴지만\n빨래는 아직 안에 있었다",
+        "empathy": "내 행동은 작은데 책임과 대기는 더 커지는 상황",
+        "share_reason": "같은 장면을 겪어본 사람과 의견을 나누고 싶다"
+      },
+      "plan": {
+        "facts": {
+          "objective": "공용 세탁기의 빨래가 끝났다. A는 빨래를 꺼내 달라고 알렸고 B는 알림을 읽었지만 세탁물은 그대로 두었다.",
+          "a_action": "다음 세탁을 하려고 종료 알림을 보냈다",
+          "b_action": "종료 알림을 읽고도 세탁물은 그대로 두었다",
+          "a_claim": "끝난 세탁기는 다음 사람이 써야 한다",
+          "b_claim": "알림을 읽었지만 당장 방을 나갈 수 없었다",
+          "issue": "읽음과 처리 완료는 같은 것인가",
+          "comic_anchor": "종료 알림을 읽고도"
+        },
+        "a_reason": "끝난 세탁기는 다음 사람이 써야 한다는 입장도 이해할 수 있다",
+        "b_reason": "알림을 읽었지만 당장 방을 나갈 수 없었다는 입장도 이해할 수 있다",
+        "tension": "읽음과 처리 완료는 같은 것인가",
+        "format": "emergency",
+        "format_reason": "사건의 말과 조치가 만들어 내는 변화에 맞는 포맷"
+      },
+      "verdicts": {
+        "options": [
+          {
+            "id": "v1",
+            "type": "I",
+            "anchor": "종료 알림을 읽고도",
+            "order": "사진에 양말 한 장이라도 남으면 종료 확인은 반려한다. 사진을 찍으러 온 사람에게 자동으로 꺼낼 의무가 생기지는 않는다.",
+            "logic": "사건의 종료 알림을 읽고도가 만든 기대를 구체적 접수 규칙으로 집행한다.",
+            "side_effect": "가족 단톡방에 빈 세탁기 사진이 쌓였다. 가족사진보다 빈 통 사진이 많아졌다.",
+            "criteria": [
+              "action_link",
+              "specific_rule",
+              "side_effect"
+            ],
+            "fit": 5,
+            "surprise": 4,
+            "humor": 4
+          },
+          {
+            "id": "v2",
+            "type": "C",
+            "anchor": "종료 알림을 읽고도",
+            "order": "읽음과 빨래를 꺼낸 시각의 차이를 처리 대기 시간으로 기록한다.",
+            "logic": "같은 행동에 다른 행정적 효력을 부여한다.",
+            "side_effect": "가장 빠르게 읽던 사람이 가장 긴 처리 기록을 갖게 됐다.",
+            "criteria": [
+              "action_link",
+              "specific_rule"
+            ],
+            "fit": 4,
+            "surprise": 3,
+            "humor": 3
+          },
+          {
+            "id": "v3",
+            "type": "J",
+            "anchor": "종료 알림을 읽고도",
+            "order": "종료 알림의 읽음 표시는 처리 완료와 다른 색으로 표시한다.",
+            "logic": "같은 행동에 다른 행정적 효력을 부여한다.",
+            "side_effect": "가족들은 빨래 대신 상태 색을 확인하기 시작했다.",
+            "criteria": [
+              "action_link",
+              "specific_rule"
+            ],
+            "fit": 4,
+            "surprise": 3,
+            "humor": 3
+          }
+        ]
+      },
+      "before": {
+        "title": "세탁 종료 확인 증거",
+        "slides": [
+          {
+            "headline": "읽음은 떴지만\n빨래는 아직 안에 있었다",
+            "body": ""
+          },
+          {
+            "headline": "사건 경위",
+            "body": "공용 세탁기의 빨래가 끝났다. A는 빨래를 꺼내 달라고 알렸고 B는 알림을 읽었지만 세탁물은 그대로 두었다."
+          },
+          {
+            "headline": "심의 경과",
+            "body": "본 위원회는 양측의 입장을 검토하였다.\n\n서로 배려하고 주의할 것을 권고한다."
+          },
+          {}
+        ]
+      },
+      "after": {
+        "schema_version": 2,
+        "test_only": true,
+        "title": "세탁 종료 확인 증거",
+        "format": "emergency",
+        "facts_hash": "063e70ed0ff9833b53e0c11a9404607d673db8b5229c0a0aca653a051cc238d8",
+        "verdict_id": "v1",
+        "caption": "세탁 종료 확인 증거을 접수했습니다. 여러분이라면 어느 쪽 주장에 공감하시나요? 가상 기관 비현실문제부의 풍자 창작입니다. #비현실문제부 #일상풍자 #생활공감",
+        "claims": [],
+        "source_url": null,
+        "slides": [
+          {
+            "role": "incident",
+            "eyebrow": "상황 접수",
+            "headline": "읽음은 떴지만\n빨래는 아직 안에 있었다",
+            "body": "",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "order",
+            "eyebrow": "긴급 명령",
+            "headline": "접수된 행동",
+            "body": "종료 알림 확인은 세탁물이 없는 빈 통 사진으로만 접수한다. 읽음 표시는 접수 확인으로 대체한다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "scope",
+            "eyebrow": "적용 범위",
+            "headline": "충돌하는 두 기준",
+            "body": "공용 세탁기의 종료 확인에만 적용한다. 개인 알람을 읽었다고 집안일이 끝난 것으로 보지는 않는다. 다음 이용자의 대기와 현재 이용자의 사정을 구분한다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "exception",
+            "eyebrow": "예외 조항",
+            "headline": "조치의 적용 범위",
+            "body": "사진에 양말 한 장이라도 남으면 종료 확인은 반려한다. 사진을 찍으러 온 사람에게 자동으로 꺼낼 의무가 생기지는 않는다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "side_effect",
+            "eyebrow": "시행 이후",
+            "headline": "그 뒤의 생활",
+            "body": "가족 단톡방에 빈 세탁기 사진이 쌓였다. 가족사진보다 빈 통 사진이 많아졌다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          }
+        ]
+      },
+      "source_feedback": [],
+      "editor_note": "편집자가 설계한 회귀 예시다. 모델의 실제 생성/평가 결과나 재미 개선의 실증 자료가 아니다."
+    },
+    {
+      "id": "calendar",
+      "test_only": true,
+      "before_kind": "handwritten_legacy_baseline",
+      "candidate": {
+        "test_only": true,
+        "title": "참석 가능의 효력 발생",
+        "domain": "digital",
+        "objective": "A는 공유 일정의 참석 가능 표시를 보고 장소를 예약했다. B는 가능한 시간이라는 뜻이었다며 참석 확정은 아니라고 답했다.",
+        "a_action": "참석 가능 표시를 보고 장소를 예약했다",
+        "b_action": "참석 가능 버튼을 누른 뒤 확정은 아니라고 답했다",
+        "a_claim": "가능 표시를 믿고 인원을 셌다",
+        "b_claim": "그 시간에 다른 일정이 없다는 뜻이었다",
+        "issue": "가능과 참석 사이에는 무엇이 남아 있는가",
+        "comic_anchor": "참석 가능 버튼을 누른 뒤",
+        "conflict_key": "calendar:action-conflict",
+        "hook": "가능한 사람은 많았다\n오는 사람은 아직 없었다",
+        "empathy": "내 행동은 작은데 책임과 대기는 더 커지는 상황",
+        "share_reason": "같은 장면을 겪어본 사람과 의견을 나누고 싶다"
+      },
+      "plan": {
+        "facts": {
+          "objective": "A는 공유 일정의 참석 가능 표시를 보고 장소를 예약했다. B는 가능한 시간이라는 뜻이었다며 참석 확정은 아니라고 답했다.",
+          "a_action": "참석 가능 표시를 보고 장소를 예약했다",
+          "b_action": "참석 가능 버튼을 누른 뒤 확정은 아니라고 답했다",
+          "a_claim": "가능 표시를 믿고 인원을 셌다",
+          "b_claim": "그 시간에 다른 일정이 없다는 뜻이었다",
+          "issue": "가능과 참석 사이에는 무엇이 남아 있는가",
+          "comic_anchor": "참석 가능 버튼을 누른 뒤"
+        },
+        "a_reason": "가능 표시를 믿고 인원을 셌다는 입장도 이해할 수 있다",
+        "b_reason": "그 시간에 다른 일정이 없다는 뜻이었다는 입장도 이해할 수 있다",
+        "tension": "가능과 참석 사이에는 무엇이 남아 있는가",
+        "format": "decree",
+        "format_reason": "사건의 말과 조치가 만들어 내는 변화에 맞는 포맷"
+      },
+      "verdicts": {
+        "options": [
+          {
+            "id": "v1",
+            "type": "G",
+            "anchor": "참석 가능 버튼을 누른 뒤",
+            "order": "다만 예약에는 확정 인원이 필요하다. 의자에 앉기 전에는 누구도 확정 인원에 포함되지 않는다.",
+            "logic": "사건의 참석 가능 버튼을 누른 뒤가 만든 기대를 구체적 접수 규칙으로 집행한다.",
+            "side_effect": "모임은 모두 도착한 다음에야 성사됐다. 총무는 약속을 정하려고 일단 사람부터 모았다.",
+            "criteria": [
+              "action_link",
+              "specific_rule",
+              "side_effect"
+            ],
+            "fit": 5,
+            "surprise": 4,
+            "humor": 4
+          },
+          {
+            "id": "v2",
+            "type": "A",
+            "anchor": "참석 가능 버튼을 누른 뒤",
+            "order": "참석 가능은 가능 상태로만 남기고 예약 인원에 포함하지 않는다.",
+            "logic": "같은 행동에 다른 행정적 효력을 부여한다.",
+            "side_effect": "가능 인원은 늘었지만 예약표는 계속 비어 있었다.",
+            "criteria": [
+              "action_link",
+              "specific_rule"
+            ],
+            "fit": 4,
+            "surprise": 3,
+            "humor": 3
+          },
+          {
+            "id": "v3",
+            "type": "C",
+            "anchor": "참석 가능 버튼을 누른 뒤",
+            "order": "가능과 확정 사이의 대기 시간을 일정표의 별도 일정으로 등록한다.",
+            "logic": "같은 행동에 다른 행정적 효력을 부여한다.",
+            "side_effect": "확정 여부를 기다리는 일정 때문에 가능한 시간이 사라졌다.",
+            "criteria": [
+              "action_link",
+              "specific_rule"
+            ],
+            "fit": 4,
+            "surprise": 3,
+            "humor": 3
+          }
+        ]
+      },
+      "before": {
+        "title": "참석 가능의 효력 발생",
+        "slides": [
+          {
+            "headline": "가능한 사람은 많았다\n오는 사람은 아직 없었다",
+            "body": ""
+          },
+          {
+            "headline": "사건 경위",
+            "body": "A는 공유 일정의 참석 가능 표시를 보고 장소를 예약했다. B는 가능한 시간이라는 뜻이었다며 참석 확정은 아니라고 답했다."
+          },
+          {
+            "headline": "심의 경과",
+            "body": "본 위원회는 양측의 입장을 검토하였다.\n\n서로 배려하고 주의할 것을 권고한다."
+          },
+          {}
+        ]
+      },
+      "after": {
+        "schema_version": 2,
+        "test_only": true,
+        "title": "참석 가능의 효력 발생",
+        "format": "decree",
+        "facts_hash": "087c189ac57ca8655337d0eea20af5f241a91fca5bece9e564f1720a187c80f5",
+        "verdict_id": "v1",
+        "caption": "참석 가능의 효력 발생을 접수했습니다. 여러분이라면 어느 쪽 주장에 공감하시나요? 가상 기관 비현실문제부의 풍자 창작입니다. #비현실문제부 #일상풍자 #생활공감",
+        "claims": [],
+        "source_url": null,
+        "slides": [
+          {
+            "role": "practice",
+            "eyebrow": "관행 접수",
+            "headline": "가능한 사람은 많았다\n오는 사람은 아직 없었다",
+            "body": "",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "definition",
+            "eyebrow": "용어 정의",
+            "headline": "접수된 행동",
+            "body": "참석 가능은 시간이 비어 있다는 신고로 정의한다. 참석 확정과는 별도의 상태로 관리한다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "rule",
+            "eyebrow": "시행 규칙",
+            "headline": "충돌하는 두 기준",
+            "body": "참석 확정 버튼은 모임 장소의 의자에 앉은 뒤 활성화한다. 예약자는 가능 표시를 출석으로 계산할 수 없다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "loophole",
+            "eyebrow": "예외 조항",
+            "headline": "조치의 적용 범위",
+            "body": "다만 예약에는 확정 인원이 필요하다. 의자에 앉기 전에는 누구도 확정 인원에 포함되지 않는다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "side_effect",
+            "eyebrow": "시행 결과",
+            "headline": "그 뒤의 생활",
+            "body": "모임은 모두 도착한 다음에야 성사됐다. 총무는 약속을 정하려고 일단 사람부터 모았다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          }
+        ]
+      },
+      "source_feedback": [],
+      "editor_note": "편집자가 설계한 회귀 예시다. 모델의 실제 생성/평가 결과나 재미 개선의 실증 자료가 아니다."
+    },
+    {
+      "id": "minutes",
+      "test_only": true,
+      "before_kind": "handwritten_legacy_baseline",
+      "candidate": {
+        "test_only": true,
+        "title": "오탈자와 출석의 관계",
+        "domain": "university",
+        "objective": "회의에 불참한 A가 공유 회의록의 오탈자를 고쳤다. B는 수정 이력을 참석 증거로 적고 A를 다음 발표자로 지정했다.",
+        "a_action": "공유 회의록의 오탈자를 고쳤다",
+        "b_action": "수정 이력을 참석 증거로 적었다",
+        "a_claim": "맞춤법만 고쳤다",
+        "b_claim": "회의록을 고친 사람이 내용을 가장 잘 알 것이다",
+        "issue": "문서 수정은 회의 참석을 증명하는가",
+        "comic_anchor": "오탈자를 고쳤다",
+        "conflict_key": "minutes:action-conflict",
+        "hook": "회의에는 못 갔는데\n다음 발표자가 됐다",
+        "empathy": "내 행동은 작은데 책임과 대기는 더 커지는 상황",
+        "share_reason": "같은 장면을 겪어본 사람과 의견을 나누고 싶다"
+      },
+      "plan": {
+        "facts": {
+          "objective": "회의에 불참한 A가 공유 회의록의 오탈자를 고쳤다. B는 수정 이력을 참석 증거로 적고 A를 다음 발표자로 지정했다.",
+          "a_action": "공유 회의록의 오탈자를 고쳤다",
+          "b_action": "수정 이력을 참석 증거로 적었다",
+          "a_claim": "맞춤법만 고쳤다",
+          "b_claim": "회의록을 고친 사람이 내용을 가장 잘 알 것이다",
+          "issue": "문서 수정은 회의 참석을 증명하는가",
+          "comic_anchor": "오탈자를 고쳤다"
+        },
+        "a_reason": "맞춤법만 고쳤다는 입장도 이해할 수 있다",
+        "b_reason": "회의록을 고친 사람이 내용을 가장 잘 알 것이다는 입장도 이해할 수 있다",
+        "tension": "문서 수정은 회의 참석을 증명하는가",
+        "format": "reversal",
+        "format_reason": "사건의 말과 조치가 만들어 내는 변화에 맞는 포맷"
+      },
+      "verdicts": {
+        "options": [
+          {
+            "id": "v1",
+            "type": "I",
+            "anchor": "오탈자를 고쳤다",
+            "order": "발표자 지정의 참석 증거는 회의 중 실제 발언 한 문장으로 제한한다. 오탈자 수정 이력은 제외한다.",
+            "logic": "사건의 오탈자를 고쳤다가 만든 기대를 구체적 접수 규칙으로 집행한다.",
+            "side_effect": "다음 회의에서는 모두 고개로만 대답했다. 회의록에는 침묵이 상세히 기록됐다.",
+            "criteria": [
+              "action_link",
+              "specific_rule",
+              "side_effect"
+            ],
+            "fit": 5,
+            "surprise": 4,
+            "humor": 4
+          },
+          {
+            "id": "v2",
+            "type": "A",
+            "anchor": "오탈자를 고쳤다",
+            "order": "수정 이력은 수정에만 효력을 인정하고 발언 이력과 별도로 기재한다.",
+            "logic": "같은 행동에 다른 행정적 효력을 부여한다.",
+            "side_effect": "회의록에서 맞춤법 담당자 명단이 발표자 명단보다 길어졌다.",
+            "criteria": [
+              "action_link",
+              "specific_rule"
+            ],
+            "fit": 4,
+            "surprise": 3,
+            "humor": 3
+          },
+          {
+            "id": "v3",
+            "type": "B",
+            "anchor": "오탈자를 고쳤다",
+            "order": "수정 이력을 참석 근거로 쓴 사람을 기록 검증 담당자로 지정한다.",
+            "logic": "같은 행동에 다른 행정적 효력을 부여한다.",
+            "side_effect": "출석을 빨리 정하려던 사람이 문서 이력부터 읽게 됐다.",
+            "criteria": [
+              "action_link",
+              "specific_rule"
+            ],
+            "fit": 4,
+            "surprise": 3,
+            "humor": 3
+          }
+        ]
+      },
+      "before": {
+        "title": "오탈자와 출석의 관계",
+        "slides": [
+          {
+            "headline": "회의에는 못 갔는데\n다음 발표자가 됐다",
+            "body": ""
+          },
+          {
+            "headline": "사건 경위",
+            "body": "회의에 불참한 A가 공유 회의록의 오탈자를 고쳤다. B는 수정 이력을 참석 증거로 적고 A를 다음 발표자로 지정했다."
+          },
+          {
+            "headline": "심의 경과",
+            "body": "본 위원회는 양측의 입장을 검토하였다.\n\n서로 배려하고 주의할 것을 권고한다."
+          },
+          {}
+        ]
+      },
+      "after": {
+        "schema_version": 2,
+        "test_only": true,
+        "title": "오탈자와 출석의 관계",
+        "format": "reversal",
+        "facts_hash": "272ed43e708700120790c4022ac2f38c993ef5bbc6531cb4d68363cdd8de3fa7",
+        "verdict_id": "v1",
+        "caption": "오탈자와 출석의 관계을 접수했습니다. 여러분이라면 어느 쪽 주장에 공감하시나요? 가상 기관 비현실문제부의 풍자 창작입니다. #비현실문제부 #일상풍자 #생활공감",
+        "claims": [],
+        "source_url": null,
+        "slides": [
+          {
+            "role": "initial_decision",
+            "eyebrow": "최초 판정",
+            "headline": "회의록을 고친 사람이\n다음 발표자로 지정됐다",
+            "body": "",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "recorded_evidence",
+            "eyebrow": "기록 확인",
+            "headline": "접수된 행동",
+            "body": "수정 이력의 내용은 오탈자 수정이었다. 신청인은 회의에 참석하지 않았다. 문서에 손을 댄 시각만 기록에 남아 있었다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "counterclaim",
+            "eyebrow": "반론 접수",
+            "headline": "충돌하는 두 기준",
+            "body": "확인된 행동은 오탈자 수정이었다. 신청인은 발언하지 않았고 상대는 내용을 읽었다는 점을 참석의 근거로 들었다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "revised_decision",
+            "eyebrow": "판정 번복",
+            "headline": "조치의 적용 범위",
+            "body": "발표자 지정의 참석 증거는 회의 중 실제 발언 한 문장으로 제한한다. 오탈자 수정 이력은 제외한다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "consequence",
+            "eyebrow": "번복 이후",
+            "headline": "그 뒤의 생활",
+            "body": "다음 회의에서는 모두 고개로만 대답했다. 회의록에는 침묵이 상세히 기록됐다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          }
+        ]
+      },
+      "source_feedback": [],
+      "editor_note": "편집자가 설계한 회귀 예시다. 모델의 실제 생성/평가 결과나 재미 개선의 실증 자료가 아니다."
+    },
+    {
+      "id": "size",
+      "test_only": true,
+      "before_kind": "handwritten_legacy_baseline",
+      "candidate": {
+        "test_only": true,
+        "title": "보통 사이즈의 표본",
+        "domain": "shopping",
+        "objective": "A가 중고 옷의 실측을 물었다. B는 줄자 대신 보통 사이즈라고 답했다. A는 맞을지 모르겠고 B는 반복 측정이 번거롭다고 했다.",
+        "a_action": "중고 옷의 실측을 물었다",
+        "b_action": "실측 대신 보통 사이즈라고 답했다",
+        "a_claim": "입을 수 있는지 알고 싶다",
+        "b_claim": "매번 재고 답하는 일이 번거롭다",
+        "issue": "누구에게 보통인 사이즈인가",
+        "comic_anchor": "보통 사이즈라고 답했다",
+        "conflict_key": "size:action-conflict",
+        "hook": "몇 센티냐고 물었는데\n보통이라는 답이 왔다",
+        "empathy": "내 행동은 작은데 책임과 대기는 더 커지는 상황",
+        "share_reason": "같은 장면을 겪어본 사람과 의견을 나누고 싶다"
+      },
+      "plan": {
+        "facts": {
+          "objective": "A가 중고 옷의 실측을 물었다. B는 줄자 대신 보통 사이즈라고 답했다. A는 맞을지 모르겠고 B는 반복 측정이 번거롭다고 했다.",
+          "a_action": "중고 옷의 실측을 물었다",
+          "b_action": "실측 대신 보통 사이즈라고 답했다",
+          "a_claim": "입을 수 있는지 알고 싶다",
+          "b_claim": "매번 재고 답하는 일이 번거롭다",
+          "issue": "누구에게 보통인 사이즈인가",
+          "comic_anchor": "보통 사이즈라고 답했다"
+        },
+        "a_reason": "입을 수 있는지 알고 싶다는 입장도 이해할 수 있다",
+        "b_reason": "매번 재고 답하는 일이 번거롭다는 입장도 이해할 수 있다",
+        "tension": "누구에게 보통인 사이즈인가",
+        "format": "reply",
+        "format_reason": "사건의 말과 조치가 만들어 내는 변화에 맞는 포맷"
+      },
+      "verdicts": {
+        "options": [
+          {
+            "id": "v1",
+            "type": "G",
+            "anchor": "보통 사이즈라고 답했다",
+            "order": "보통 사이즈는 같은 품목 열 건의 거래에서 산출한 평균에만 사용할 수 있다. 첫 거래에는 아직 보통이 없다.",
+            "logic": "사건의 보통 사이즈라고 답했다가 만든 기대를 구체적 접수 규칙으로 집행한다.",
+            "side_effect": "판매자는 첫 상품을 팔기 위해 거래 경력부터 만들기 시작했다. 구매자는 실측 대신 판매자의 성장 과정을 받았다.",
+            "criteria": [
+              "action_link",
+              "specific_rule",
+              "side_effect"
+            ],
+            "fit": 5,
+            "surprise": 4,
+            "humor": 4
+          },
+          {
+            "id": "v2",
+            "type": "C",
+            "anchor": "보통 사이즈라고 답했다",
+            "order": "보통이라는 답변의 허용 오차를 판매자 자신의 보통 두 벌의 차이로 정한다.",
+            "logic": "같은 행동에 다른 행정적 효력을 부여한다.",
+            "side_effect": "판매자는 팔 옷보다 자기 옷을 먼저 재기 시작했다.",
+            "criteria": [
+              "action_link",
+              "specific_rule"
+            ],
+            "fit": 4,
+            "surprise": 3,
+            "humor": 3
+          },
+          {
+            "id": "v3",
+            "type": "J",
+            "anchor": "보통 사이즈라고 답했다",
+            "order": "실측 미제출 상품은 크기 미정 항목으로만 접수한다.",
+            "logic": "같은 행동에 다른 행정적 효력을 부여한다.",
+            "side_effect": "검색창의 사이즈 선택에 미정이 가장 많이 남았다.",
+            "criteria": [
+              "action_link",
+              "specific_rule"
+            ],
+            "fit": 4,
+            "surprise": 3,
+            "humor": 3
+          }
+        ]
+      },
+      "before": {
+        "title": "보통 사이즈의 표본",
+        "slides": [
+          {
+            "headline": "몇 센티냐고 물었는데\n보통이라는 답이 왔다",
+            "body": ""
+          },
+          {
+            "headline": "사건 경위",
+            "body": "A가 중고 옷의 실측을 물었다. B는 줄자 대신 보통 사이즈라고 답했다. A는 맞을지 모르겠고 B는 반복 측정이 번거롭다고 했다."
+          },
+          {
+            "headline": "심의 경과",
+            "body": "본 위원회는 양측의 입장을 검토하였다.\n\n서로 배려하고 주의할 것을 권고한다."
+          },
+          {}
+        ]
+      },
+      "after": {
+        "schema_version": 2,
+        "test_only": true,
+        "title": "보통 사이즈의 표본",
+        "format": "reply",
+        "facts_hash": "a43583e0e32cf9420d5ea41b12a36f9b04d5de59d8659037457d679f0d4bdb2e",
+        "verdict_id": "v1",
+        "caption": "보통 사이즈의 표본을 접수했습니다. 여러분이라면 어느 쪽 주장에 공감하시나요? 가상 기관 비현실문제부의 풍자 창작입니다. #비현실문제부 #일상풍자 #생활공감",
+        "claims": [],
+        "source_url": null,
+        "slides": [
+          {
+            "role": "petition",
+            "eyebrow": "국민 민원",
+            "headline": "몇 센티냐고 물었는데\n보통이라는 답이 왔다",
+            "body": "",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "background",
+            "eyebrow": "질문의 배경",
+            "headline": "접수된 행동",
+            "body": "신청인은 옷의 길이를 물었다. 판매자는 보통 사이즈라고 답했다. 보통의 기준이 되는 옷은 제시되지 않았다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "response",
+            "eyebrow": "민원 회신",
+            "headline": "충돌하는 두 기준",
+            "body": "회신: 보통이라는 답변은 비교할 표본이 있을 때만 인정한다. 개인의 체감 크기는 다른 사람에게 자동 적용되지 않는다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "implementation",
+            "eyebrow": "집행 방식",
+            "headline": "조치의 적용 범위",
+            "body": "보통 사이즈는 같은 품목 열 건의 거래에서 산출한 평균에만 사용할 수 있다. 첫 거래에는 아직 보통이 없다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "aftermath",
+            "eyebrow": "회신 이후",
+            "headline": "그 뒤의 생활",
+            "body": "판매자는 첫 상품을 팔기 위해 거래 경력부터 만들기 시작했다. 구매자는 실측 대신 판매자의 성장 과정을 받았다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          }
+        ]
+      },
+      "source_feedback": [],
+      "editor_note": "편집자가 설계한 회귀 예시다. 모델의 실제 생성/평가 결과나 재미 개선의 실증 자료가 아니다."
+    },
+    {
+      "id": "bench",
+      "test_only": true,
+      "before_kind": "handwritten_legacy_baseline",
+      "candidate": {
+        "test_only": true,
+        "title": "가방의 대기 순번 재심",
+        "domain": "public_space",
+        "objective": "A가 정류장 벤치에 앉으려 했다. B는 커피를 사러 간 사이 가방으로 자리를 유지했고 가방이 먼저 왔다고 주장했다.",
+        "a_action": "빈 벤치 자리 옆의 가방을 보고 앉아도 되는지 물었다",
+        "b_action": "커피를 사러 간 사이 가방으로 자리를 유지했다",
+        "a_claim": "앉을 사람은 지금 여기 있다",
+        "b_claim": "가방을 두었으니 대기는 시작됐다",
+        "issue": "대기한 것은 사람인가 가방인가",
+        "comic_anchor": "가방으로 자리를 유지했다",
+        "conflict_key": "bench:action-conflict",
+        "hook": "먼저 기다린 건\n사람이 아니라 가방이었다",
+        "empathy": "내 행동은 작은데 책임과 대기는 더 커지는 상황",
+        "share_reason": "같은 장면을 겪어본 사람과 의견을 나누고 싶다",
+        "appeal_reference": "fixture:bench-objection"
+      },
+      "plan": {
+        "facts": {
+          "objective": "A가 정류장 벤치에 앉으려 했다. B는 커피를 사러 간 사이 가방으로 자리를 유지했고 가방이 먼저 왔다고 주장했다.",
+          "a_action": "빈 벤치 자리 옆의 가방을 보고 앉아도 되는지 물었다",
+          "b_action": "커피를 사러 간 사이 가방으로 자리를 유지했다",
+          "a_claim": "앉을 사람은 지금 여기 있다",
+          "b_claim": "가방을 두었으니 대기는 시작됐다",
+          "issue": "대기한 것은 사람인가 가방인가",
+          "comic_anchor": "가방으로 자리를 유지했다"
+        },
+        "a_reason": "앉을 사람은 지금 여기 있다는 입장도 이해할 수 있다",
+        "b_reason": "가방을 두었으니 대기는 시작됐다는 입장도 이해할 수 있다",
+        "tension": "대기한 것은 사람인가 가방인가",
+        "format": "appeal",
+        "format_reason": "사건의 말과 조치가 만들어 내는 변화에 맞는 포맷",
+        "appeal_reference": "fixture:bench-objection"
+      },
+      "verdicts": {
+        "options": [
+          {
+            "id": "v1",
+            "type": "H",
+            "anchor": "가방으로 자리를 유지했다",
+            "order": "가방의 대기 순번은 보유자와 분리한다. 가방 차례에 보유자가 없으면 사람의 차례까지 당겨 오지 않는다.",
+            "logic": "사건의 가방으로 자리를 유지했다가 만든 기대를 구체적 접수 규칙으로 집행한다.",
+            "side_effect": "가방만 한 순번 빨라졌다. 돌아온 보유자는 자기 가방 뒤에 서서 차례를 기다렸다.",
+            "criteria": [
+              "action_link",
+              "specific_rule",
+              "side_effect"
+            ],
+            "fit": 5,
+            "surprise": 4,
+            "humor": 4
+          },
+          {
+            "id": "v2",
+            "type": "A",
+            "anchor": "가방으로 자리를 유지했다",
+            "order": "가방이 먼저 왔다는 진술은 가방의 대기에만 적용한다.",
+            "logic": "같은 행동에 다른 행정적 효력을 부여한다.",
+            "side_effect": "가방이 앉아 있고 주인은 서 있는 시간이 공식 기록됐다.",
+            "criteria": [
+              "action_link",
+              "specific_rule"
+            ],
+            "fit": 4,
+            "surprise": 3,
+            "humor": 3
+          },
+          {
+            "id": "v3",
+            "type": "B",
+            "anchor": "가방으로 자리를 유지했다",
+            "order": "부재 중 자리를 유지한 사람에게 복귀 시점의 마지막 순번을 배정한다.",
+            "logic": "같은 행동에 다른 행정적 효력을 부여한다.",
+            "side_effect": "커피는 빨리 나왔지만 주인의 대기는 다시 시작됐다.",
+            "criteria": [
+              "action_link",
+              "specific_rule"
+            ],
+            "fit": 4,
+            "surprise": 3,
+            "humor": 3
+          }
+        ]
+      },
+      "before": {
+        "title": "가방의 대기 순번 재심",
+        "slides": [
+          {
+            "headline": "먼저 기다린 건\n사람이 아니라 가방이었다",
+            "body": ""
+          },
+          {
+            "headline": "사건 경위",
+            "body": "A가 정류장 벤치에 앉으려 했다. B는 커피를 사러 간 사이 가방으로 자리를 유지했고 가방이 먼저 왔다고 주장했다."
+          },
+          {
+            "headline": "심의 경과",
+            "body": "본 위원회는 양측의 입장을 검토하였다.\n\n서로 배려하고 주의할 것을 권고한다."
+          },
+          {}
+        ]
+      },
+      "after": {
+        "schema_version": 2,
+        "test_only": true,
+        "title": "가방의 대기 순번 재심",
+        "format": "appeal",
+        "facts_hash": "a7c080a94836dd1f0312c5a4f4cc58b474cab73ab8fbe6359332dd43241b0bf4",
+        "verdict_id": "v1",
+        "caption": "가방의 대기 순번 재심을 접수했습니다. 여러분이라면 어느 쪽 주장에 공감하시나요? 가상 기관 비현실문제부의 풍자 창작입니다. #비현실문제부 #일상풍자 #생활공감",
+        "claims": [],
+        "source_url": null,
+        "slides": [
+          {
+            "role": "original_ruling",
+            "eyebrow": "기존 판정",
+            "headline": "가방의 대기를\n사람의 대기로 인정했다",
+            "body": "",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "objection",
+            "eyebrow": "재심 요청",
+            "headline": "접수된 행동",
+            "body": "기존 가상 판정은 가방의 대기 순번을 인정했다. 재심 신청은 사람의 부재를 함께 고려해 달라는 것이었다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "reconsideration",
+            "eyebrow": "쟁점 재검토",
+            "headline": "충돌하는 두 기준",
+            "body": "가방이 먼저 왔다는 주장과 지금 앉을 사람이 기다린다는 주장이 충돌했다. 가방의 순번과 사람의 순번은 같은지 다시 심의했다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "revised_ruling",
+            "eyebrow": "재심 결정",
+            "headline": "조치의 적용 범위",
+            "body": "가방의 대기 순번은 보유자와 분리한다. 가방 차례에 보유자가 없으면 사람의 차례까지 당겨 오지 않는다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          },
+          {
+            "role": "consequence",
+            "eyebrow": "재심 이후",
+            "headline": "그 뒤의 생활",
+            "body": "가방만 한 순번 빨라졌다. 돌아온 보유자는 자기 가방 뒤에 서서 차례를 기다렸다.",
+            "fact_refs": [
+              "objective",
+              "comic_anchor"
+            ],
+            "emphasis": []
+          }
+        ]
+      },
+      "source_feedback": [
+        {
+          "reference": "fixture:bench-objection",
+          "text": "사람이 없던 시간도 대기인가요?",
+          "test_only": true
+        }
+      ],
+      "editor_note": "편집자가 설계한 회귀 예시다. 모델의 실제 생성/평가 결과나 재미 개선의 실증 자료가 아니다."
+    }
+  ]
+}

@@ -50,11 +50,14 @@ def readiness(config):
                         backlog[table]=dict(c.execute(f'SELECT state,count(*) FROM {table} GROUP BY state'))
         except sqlite3.Error: issues.append('database_unreadable')
     if schema<4: issues.append('migration_required')
+    if e.get('CONTENT_ENGINE_VERSION')=='2' and schema<7:issues.append('creative_migration_required')
     if integrity!='ok': issues.append('database_integrity_unverified')
     if any(backlog.get(table,{}).get(state,0) for table,states in [('jobs',('running','uncertain')),('outbox',('sending','uncertain'))] for state in states):
         issues.append('inflight_or_uncertain_work_requires_inspection')
     meta=('IG_ACCESS_TOKEN','IG_ACCOUNT_ID','IG_GRAPH_VERSION','IG_TOKEN_EXPIRES_AT')
     return {'ready_for_worker':not issues,'issues':issues,'configuration_errors':configuration_errors,'local_provider_checks':checks,'missing_settings':missing,'schema_version':schema,'integrity':integrity,'backlog':backlog,
+            'paid_ai_calls_enabled':e.get('PAID_AI_CALLS_ENABLED','1')=='1',
+            'content_engine_version':e.get('CONTENT_ENGINE_VERSION','1'),
             'external_calls_enabled':e.get('ENABLE_EXTERNAL_CALLS')=='1','public_media_enabled':e.get('ENABLE_PUBLIC_MEDIA')=='1',
             'instagram_enabled':e.get('INSTAGRAM_PUBLISH_ENABLED')=='1','missing_instagram_settings':[key for key in meta if not e.get(key)],
             'account_connections_verified':False}

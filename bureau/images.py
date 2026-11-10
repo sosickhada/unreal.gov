@@ -219,6 +219,7 @@ def screen_photo(config,photo,subject):
     from anthropic import Anthropic
     from .content import parse_json
     from .preflight import claude_settings
+    config.require_paid_ai()
     config.require_external();claude_settings(config.env)
     with Image.open(photo['path']) as im:
         im=im.convert('RGB');im.thumbnail((1024,1024));buf=BytesIO();im.save(buf,'JPEG',quality=85)

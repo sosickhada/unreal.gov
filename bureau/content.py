@@ -175,6 +175,9 @@ def everyday_candidates(day, generation=0):
 
 
 def validate_draft(draft, source_url):
+    if isinstance(draft,dict) and draft.get('schema_version')==2:
+        from .creative import validate_draft as validate_v2
+        return validate_v2(draft,source_url)
     if not isinstance(draft,dict):
         raise ValueError('Draft must be an object')
     text(draft.get('title'),'title',60)

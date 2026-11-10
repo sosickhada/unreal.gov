@@ -21,6 +21,8 @@ def resume(store,jid):
 def main():
     p=argparse.ArgumentParser(description='비현실문제부: all external calls disabled by default')
     sub=p.add_subparsers(dest='command',required=True)
+    sub.add_parser('creative-usage')
+    creative=sub.add_parser('creative-compare');creative.add_argument('--output',default='output/creative-v2')
     review=sub.add_parser('instagram-review');review.add_argument('record_id',type=int);review.add_argument('revision',type=int)
     sub.add_parser('instagram-check');sub.add_parser('migrate'); sub.add_parser('health'); sub.add_parser('schedule');sub.add_parser('doctor');sub.add_parser('backup')
     worker=sub.add_parser('worker'); worker.add_argument('--once',action='store_true')
@@ -33,7 +35,18 @@ def main():
     search=sub.add_parser('image-search');search.add_argument('query')
     download=sub.add_parser('download-image');download.add_argument('query');download.add_argument('photo_id',type=int);download.add_argument('destination')
     args=p.parse_args(); config=Config.load(); store=Store(config.db)
-    if args.command=='instagram-review':
+    if args.command=='creative-usage':
+        with sqlite3.connect(f'file:{config.db}?mode=ro',uri=True) as c:
+            c.row_factory=sqlite3.Row
+            rows=[dict(r) for r in c.execute('SELECT stage,model_id,state,count(*) requests,sum(input_tokens) input_tokens,sum(output_tokens) output_tokens,sum(estimated_usd) estimated_usd FROM creative_calls GROUP BY stage,model_id,state')]
+        print(json.dumps({'creative_v2_calls':rows,'cost_basis':'configured stage rates; null means unknown, not free'},ensure_ascii=False,indent=2))
+    elif args.command=='creative-compare':
+        from .creative_comparison import compare,markdown
+        report=compare();destination=Path(args.output);destination.mkdir(parents=True,exist_ok=True)
+        (destination/'comparison.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
+        (destination/'comparison.md').write_text(markdown(report))
+        print('8 test-only editorial comparisons saved; no model/Telegram/Instagram calls made')
+    elif args.command=='instagram-review':
         from .instagram import Instagram
         from .adapters import Media
         from .publish_review import prepare_review
@@ -94,6 +107,8 @@ def main():
             c.execute("UPDATE checkpoints SET state=CASE WHEN step LIKE 'claude%' OR step LIKE 'ig_child_%' AND step NOT LIKE 'ig_child_ready_%' OR step IN ('ig_container','ig_publish') THEN 'uncertain' ELSE 'failed' END WHERE job_id=? AND state='running'",(args.job_id,))
             uncertain=c.execute("SELECT 1 FROM checkpoints WHERE job_id=? AND state='uncertain'",(args.job_id,)).fetchone()
             c.execute('UPDATE jobs SET state=?,error_code=? WHERE id=?',('uncertain' if uncertain else 'failed','interrupted',args.job_id))
+            if c.execute("SELECT 1 FROM sqlite_master WHERE name='creative_calls'").fetchone():
+                c.execute("UPDATE creative_calls SET state=(SELECT state FROM checkpoints WHERE job_id=creative_calls.job_id AND step=creative_calls.step) WHERE job_id=? AND EXISTS(SELECT 1 FROM checkpoints WHERE job_id=creative_calls.job_id AND step=creative_calls.step)",(args.job_id,))
             store.event(c,args.job_id,'operator_recovery','worker stopped asserted')
         print('Recovery recorded; uncertain writes remain blocked')
     elif args.command=='register-photo':

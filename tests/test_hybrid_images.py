@@ -135,4 +135,4 @@ class HybridProviderTests(unittest.TestCase):
             row=c.execute('SELECT * FROM puter_image_attempts WHERE id=41').fetchone()
             self.assertEqual((row['state'],row['reason'],row['created_at']),('blocked','old reason','2026-11-01'))
             self.assertIsNone(row['request_key'])
-            self.assertEqual(c.execute('SELECT MAX(version) FROM schema_versions').fetchone()[0],6)
+            self.assertEqual(c.execute('SELECT MAX(version) FROM schema_versions').fetchone()[0],7)

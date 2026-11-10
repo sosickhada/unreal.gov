@@ -175,6 +175,7 @@ class GeminiImages:
                         self.store.notify(c,'gemini-usage-overrun:'+row['period'],{'text':'Gemini 사용량이 예약 가정을 초과했습니다. 이번 달 생성을 중단하고 가격/청구 내역을 확인하세요.'})
 
     def generate(self,draft,slot,variant='0'):
+        self.config.require_paid_ai()
         q=settings(self.config,self.at);prompt=prompt_for(draft,slot);body=request_body(prompt,q)
         key=digest({'provider':'gemini','request':body,'model':q['model'],'slot':slot,'variant':str(variant)})
         for _ in range(q['retries']+1):

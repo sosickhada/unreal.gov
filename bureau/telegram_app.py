@@ -1,5 +1,6 @@
 import json
 from .config import Config
+from .creative import editor_report_text
 from .store import Store, kst_day, now
 from .engine import candidate_message, preview_message, plan_message
 from .gemini_images import GeminiBlocked
@@ -57,6 +58,14 @@ def build_app(config):
                 with store.tx() as c:
                     jid=store.enqueue(c,f'images:{update.update_id}','image_search',{'id':rid,'query':query})
                 payload={'text':f'사진 검색 접수: 작업 {jid}. 결과는 수동 검토가 필요합니다.'}
+            elif name=='appeal':
+                sid=store.appeal(int(context.args[0]),' '.join(context.args[1:]),f'appeal:{update.update_id}')
+                payload={'text':f'실제 반론을 기록했습니다. 재심 원고 {sid}을 별도 제작하며 원본 게시물과 승인은 유지됩니다. 새 공개 게시 승인이 필요합니다.'}
+            elif name=='editor':
+                rid=int(context.args[0]);r=store.row(rid)
+                with store.tx() as c:
+                    reports=[dict(x) for x in c.execute("SELECT iteration,payload FROM creative_artifacts WHERE selection_id=? AND revision=? AND stage='editor' ORDER BY iteration DESC",(rid,r['revision']))]
+                payload={'text':('편집장 기록 · '+str(rid)+' v'+str(r['revision'])+'\n'+'\n\n'.join(editor_report_text(json.loads(x['payload'])) for x in reports))[:3900] if reports else '이 버전에는 편집장 기록이 없습니다.'}
             elif name=='status':
                 with store.tx() as c:
                     jobs=[dict(r) for r in c.execute('SELECT id,kind,state,stage,error_code FROM jobs ORDER BY id DESC LIMIT 12')]
@@ -80,6 +89,9 @@ def build_app(config):
                 if a:
                     media=json.loads(a[0]); queue(update,{'text':f'미리보기 {rid} v{version}','files':media['files'],'sha256':media['sha256']},'images')
                 payload=plan_message(rid,r['revision'],json.loads(r['draft_json'])) if r['status'] in ('planning_review','draft_review') and version==r['revision'] else preview_message(rid,r['revision']) if r['status']=='preview_ready' and version==r['revision'] else {'text':f'게시물 {rid}: {r["status"]}. 기존 승인 기록은 유지됩니다.'}
+                if r['status']=='preview_ready' and version==r['revision'] and json.loads(r['draft_json'] or '{}').get('schema_version')==2:
+                    from .publish_review import prepare_review
+                    payload=prepare_review(store,rid,version,e['IG_ACCOUNT_ID'])
                 if a and r['status']=='preview_ready' and version==r['revision']:
                     payload['after_delivery']=f'update:{update.update_id}:images'
             elif name=='revise':
@@ -165,6 +177,16 @@ def build_app(config):
                 from .photo_review import approve
                 ready=approve(store,int(parts[1]),int(parts[2]),int(parts[3]),parts[4],str(update.effective_user.id))
                 text='사진 검토 기록을 저장했습니다. '+('두 사진이 준비되어 렌더링을 재개합니다.' if ready else '다른 슬롯의 사진도 검토·선택하세요.')
+            elif action=='editorreport':
+                rid,rev=int(parts[1]),int(parts[2]);r=store.row(rid)
+                if r['revision']!=rev:raise ValueError('Stale editorial report')
+                with store.tx() as c:
+                    reports=[dict(x) for x in c.execute("SELECT iteration,payload FROM creative_artifacts WHERE selection_id=? AND revision=? AND stage IN ('editor','validation') ORDER BY iteration DESC",(rid,rev))]
+                queue(update,{'text':('독립 편집장 의견 · '+str(rid)+' v'+str(rev)+'\n'+'\n\n'.join(editor_report_text(json.loads(x['payload'])) for x in reports))[:3900]})
+                text='편집장 의견을 전송합니다.'
+            elif action=='creativeedit':
+                store.await_revision(str(update.effective_user.id),int(parts[1]),int(parts[2]),'plan')
+                text='바꿀 갈등의 관점·판정·후폭풍을 입력하세요. 새 버전에서 최대 2회 내부 재작성 후 다시 심사하며, 기존 승인은 무효입니다.'
             elif action in ('igapprove','igcancel'):
                 from .publish_review import decide_review
                 decide_review(store,int(parts[1]),int(parts[2]),parts[3],action=='igapprove')
@@ -267,9 +289,9 @@ def build_app(config):
         if update and authorized(update): queue(update,{'text':'처리 오류가 발생했습니다. /status 확인 후 관리자에게 작업 ID를 전달하세요.'})
 
     app=ApplicationBuilder().token(e['TELEGRAM_BOT_TOKEN']).build()
-    for name in ('whoami','start','candidates','newcandidates','images','photos','upload','imagebudget','status','preview','revise','review','acceptdraft','retry','resend'):
+    for name in ('whoami','start','candidates','newcandidates','images','photos','upload','imagebudget','appeal','editor','status','preview','revise','review','acceptdraft','retry','resend'):
         app.add_handler(CommandHandler(name,command))
-    app.add_handler(CallbackQueryHandler(callback,pattern=r'^(igapprove|igcancel|igblocked|igclose|pmodel|upstart|imgsearch|aigen|airegen|imagebudget|photos|boring|boringreason|photopick|candidate|batchregen|batchreject|planapprove|planedit|imageedit|back|approve|reject|regenerate):'))
+    app.add_handler(CallbackQueryHandler(callback,pattern=r'^(editorreport|creativeedit|igapprove|igcancel|igblocked|igclose|pmodel|upstart|imgsearch|aigen|airegen|imagebudget|photos|boring|boringreason|photopick|candidate|batchregen|batchreject|planapprove|planedit|imageedit|back|approve|reject|regenerate):'))
     app.add_handler(CommandHandler('cancelrevision',cancel_revision))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,revision_message))
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE,upload_message))

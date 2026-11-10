@@ -96,6 +96,10 @@ class Engine:
         return True
 
     def candidates(self, job, p):
+        from .creative import enabled
+        if enabled(self.config):
+            from .creative_workflow import CreativeWorkflow
+            return CreativeWorkflow(self).candidates(job,p)
         with self.store.tx() as c:
             batch=c.execute('SELECT * FROM batches WHERE id=?',(p['batch_id'],)).fetchone()
             if p.get('rejected_id'):
@@ -169,6 +173,10 @@ class Engine:
             self.store.notify(c,(f'candidates:{p["batch_id"]}:replace:{p["rejected_id"]}' if p.get('rejected_id') else f'candidates:{p["batch_id"]}'),message)
 
     def draft(self, job, p):
+        from .creative import enabled
+        if enabled(self.config):
+            from .creative_workflow import CreativeWorkflow
+            return CreativeWorkflow(self).draft(job,p)
         r=self.store.row(p['id'])
         if r['revision']!=p['revision'] or r['status'] not in ('selected','revision_requested','draft_ready'):
             raise ValueError('Draft no longer eligible')
@@ -204,6 +212,11 @@ class Engine:
         if r['revision']!=p['revision'] or r['status'] not in ('draft_ready','preview_ready'):
             raise ValueError('Render version changed')
         draft=json.loads(r['draft_json'])
+        if draft.get('schema_version')==2 and draft.get('test_only'):
+            raise Waiting('Test-only content cannot enter production rendering','test_content_blocked')
+        if draft.get('schema_version')==2 and not draft.get('image_queries'):
+            from .creative_workflow import CreativeWorkflow
+            draft=CreativeWorkflow(self).image_brief(job,p,draft)
         with self.store.tx() as c:
             image=c.execute('SELECT payload FROM image_inputs WHERE selection_id=? AND revision=?',(p['id'],p['revision'])).fetchone()
         provenance={'source':'approved_figma_backgrounds','manual_review_required':True}
@@ -268,8 +281,15 @@ class Engine:
             draft['slides'][1]['background_image']=chosen['content']['path']
             draft['slides'][2]['background_image']=chosen['resolution_extra']['path']
             provenance={'photos':chosen}
+            if draft.get('schema_version')==2:
+                for i,slide in enumerate(draft['slides']):
+                    slide['background_image']=chosen['content' if i<2 else 'resolution_extra']['path']
         media=self.step(job,'render',lambda:self.media.render(draft,p['id'],p['revision']))
         media['image_provenance']=provenance
+        if draft.get('schema_version')==2:
+            media['render_schema_version']=2
+            media['story_roles']=[s['role'] for s in draft['slides']]
+            media['cover_source_sha256']=provenance.get('photos',{}).get('content',{}).get('sha256')
         if draft.get('publication_kind')=='official':
             from .release import validate_official
             validate_official(draft,media)
@@ -455,7 +475,7 @@ def candidate_message(c,batch,position=None):
     for row in rows:
         if position is not None and row['position']!=position: continue
         p=json.loads(row['payload'])
-        lines.append(f'{row["position"]}. {row["title"]}\n상황: {p["summary"]}\n공감: {p.get("empathy", "직접 검토 필요")}\n훅: {p["hook"]}\n판정: {p["satire_angle"]}\n공유 이유: {p.get("share_reason", "직접 검토 필요")}')
+        lines.append(f'{row["position"]}. {row["title"]}\n상황: {p["summary"]}\n공감: {p.get("empathy", "직접 검토 필요")}\n훅: {p["hook"]}\n판정 방향/쟁점: {p["satire_angle"]}\n공유 이유: {p.get("share_reason", "직접 검토 필요")}')
         row_buttons=[]
         if row['status']=='available': row_buttons.append({'text':f'후보 {row["position"]} 선택','callback_data':f'candidate:{row["id"]}'})
         if row['status']=='available': row_buttons.append({'text':'재미없음','callback_data':f'boring:{row["id"]}'})
@@ -466,7 +486,7 @@ def candidate_message(c,batch,position=None):
 
 
 def plan_message(rid,revision,draft):
-    return {'text':f'📝 기획안 {rid} v{revision}\n'+draft['caption']+'\n\n'+'\n\n'.join(s.get('headline','')+'\n'+s.get('body','') for s in draft['slides'][:3]),
+    return {'text':f'📝 기획안 {rid} v{revision}\n'+draft['caption']+'\n\n'+'\n\n'.join(s.get('headline','')+'\n'+s.get('body','') for s in (draft['slides'] if draft.get('schema_version')==2 else draft['slides'][:3])),
             'reply_markup':{'inline_keyboard':[
                 [{'text':'기획 승인','callback_data':f'planapprove:{rid}:{revision}'}],
                 [{'text':'기획 수정','callback_data':f'planedit:{rid}:{revision}'}],

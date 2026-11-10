@@ -34,9 +34,14 @@ def prepare_review(store, rid, revision, account):
             from .release import validate_official
             media=json.loads(c.execute('SELECT payload FROM assets WHERE selection_id=? AND revision=?',(rid,revision)).fetchone()[0])
             validate_official(draft,media)
-            review_note='사진: Pexels License · https://www.pexels.com/license/\n최종 승인은 원고·사진 관련성·라이선스·초상권 검토를 포함합니다.\n\n'
-    return {'text':f'Instagram 공개 게시 승인 요청\n게시 계정: @un_real_korea ({account})\n카드뉴스 5장 · 게시물 {rid} v{revision}\n미리보기 5장과 캡션을 검토한 후 승인하세요. 승인하면 공개 게시됩니다.\n\n'+review_note+'캡션:\n'+caption,
+            photos=media.get('image_provenance',{}).get('photos',{})
+            review_note='사진 출처·권리 검토:\n'+'\n'.join(p.get('source_url','')+' · '+p.get('license_url','') for p in photos.values())+'\n최종 승인은 원고·사진 관련성·라이선스·초상권 검토를 포함합니다.\n\n'
+    payload={'text':f'Instagram 공개 게시 승인 요청\n게시 계정: @un_real_korea ({account})\n카드뉴스 5장 · 게시물 {rid} v{revision}\n미리보기 5장과 캡션을 검토한 후 승인하세요. 승인하면 공개 게시됩니다.\n\n'+review_note+'캡션:\n'+caption,
             'reply_markup':{'inline_keyboard':[[{'text':'✅ Instagram 공개 게시 승인','callback_data':f'igapprove:{rid}:{revision}:{fp[:16]}'}],[{'text':'게시 취소','callback_data':f'igcancel:{rid}:{revision}:{fp[:16]}'}]]}}
+    if draft.get('schema_version')==2:
+        payload['reply_markup']['inline_keyboard'].append([{'text':'원고·판정 수정','callback_data':f'planedit:{rid}:{revision}'},{'text':'이미지 수정','callback_data':f'imageedit:{rid}:{revision}'}])
+        payload['reply_markup']['inline_keyboard'].append([{'text':'편집장 의견','callback_data':f'editorreport:{rid}:{revision}'}])
+    return payload
 
 
 def decide_review(store,rid,revision,short,approve):

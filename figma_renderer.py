@@ -355,6 +355,10 @@ def make_figma_resolution(s, title, extra_background=False, fonts=None):
 def expand_slides(draft):
     """Expand long verdicts without changing the approved final-verdict artwork."""
     slides = draft["slides"]
+    if draft.get('schema_version')==2:
+        from bureau.creative import validate_draft
+        validate_draft(draft)
+        return [('cover' if i==0 else 'story',slide) for i,slide in enumerate(slides)]
     if len(slides) != 4:
         raise ValueError("Expected four source slides before expansion")
     cover, content, verdict, ending = slides
@@ -471,6 +475,12 @@ async def _render(draft, prefix, progress=None):
                         continue
                     if kind == "cover":
                         markup = make_figma_cover(slide, title, fonts, inline_assets=False)
+                    elif kind == 'story':
+                        story=dict(slide,eyebrow=slide['headline'])
+                        markup=make_figma_content(story,title,fonts)
+                        import html
+                        label=html.escape(slide['eyebrow'])
+                        markup=markup.replace('<body>','<body><div style="position:absolute;left:80px;top:575px;font:26px ROKG;color:white;z-index:5">'+label+'</div>',1)
                     elif kind == "content":
                         markup = make_figma_content(slide, title, fonts)
                     elif kind == "resolution_extra":
@@ -482,10 +492,16 @@ async def _render(draft, prefix, progress=None):
                         markup = make_figma_resolution(slide, title, fonts=fonts)
                     else:
                         markup = make_fixed_slide(Path("/opt/unreal-github/figma_assets/ending_fixed.png"), inline_assets=False)
-                    if draft.get('publication_kind')=='official' and kind in ('content','resolution_extra','resolution_final'):
+                    if draft.get('publication_kind')=='official' and kind in ('content','resolution_extra','resolution_final','story'):
                         # At 390px feed width, 40px source type remains about 14.4px.
                         markup=markup.replace('</style>','</style><style>.eyebrow{top:710px;font-size:50px}.body{left:80px;top:810px;width:920px;font-size:40px;line-height:1.6;letter-spacing:-.6px}</style>',1)
-                    needs_file = kind in ("content", "resolution_extra", "resolution_final")
+                    if draft.get('schema_version')==2:
+                        markup=markup.replace('비현실문제해결부','비현실문제부 · 가상기관')
+                        stamp='오프라인 테스트 · 게시 금지' if draft.get('test_only') else '실제 기관이 아닌 풍자 창작입니다'
+                        markup=markup.replace('<body>','<body><div style="position:absolute;left:64px;top:165px;padding:8px 16px;background:rgba(4,18,38,.85);color:white;font:26px ROKG;z-index:6">'+stamp+'</div>',1)
+                        if kind=='story':
+                            markup=markup.replace('</style>','</style><style>.eyebrow{left:80px;top:625px;width:920px;font-size:48px;line-height:1.25}.body{left:80px;top:800px;width:920px;font-size:40px;line-height:1.6;letter-spacing:-.6px}</style>',1)
+                    needs_file = kind in ("content", "resolution_extra", "resolution_final", "story")
                     # Navigate to RAM-backed HTML instead of transferring megabytes
                     # of embedded artwork through the Node/CDP pipe on every page.
                     with tempfile.NamedTemporaryFile(mode='w', suffix='.html', encoding='utf-8',

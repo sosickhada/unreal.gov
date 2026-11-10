@@ -49,3 +49,5 @@
 `.env.example`은 값이 없는 설정 템플릿입니다. 실제 `.env`, DB·백업, 이미지, 인증파일은 Git에서 제외합니다. DB 스키마 생성은 명시적 `migrate` 명령만 수행합니다. 프로그램 import나 상태 조회는 마이그레이션/외부 호출을 하지 않습니다.
 
 운영 직전 전환·공개 허용·롤백 절차: [한국어 Production 전환 가이드](docs/PRODUCTION_CUTOVER_KO.md).
+
+- [콘텐츠 창작 엔진 2.0: 역할·편집장·5장 서사·오프라인 검증](docs/creative-engine-v2.md)

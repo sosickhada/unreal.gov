@@ -73,6 +73,8 @@ class Store:
             ]
             for sql in statements:
                 c.execute(sql)
+            from .creative import migrate as migrate_creative
+            migrate_creative(c)
             from .gemini_images import migrate as migrate_gemini
             migrate_gemini(c)
             from .puter_images import migrate as migrate_puter
@@ -90,6 +92,7 @@ class Store:
             c.execute('INSERT OR IGNORE INTO schema_versions VALUES(4,?)', (now(),))
             c.execute('INSERT OR IGNORE INTO schema_versions VALUES(5,?)', (now(),))
             c.execute('INSERT OR IGNORE INTO schema_versions VALUES(6,?)', (now(),))
+            c.execute('INSERT OR IGNORE INTO schema_versions VALUES(7,?)', (now(),))
 
     @staticmethod
     def event(c, subject, action, detail=''):
@@ -164,6 +167,31 @@ class Store:
             self.event(c,rid,'selected',str(candidate_id))
             return rid
 
+    def appeal(self,rid,feedback,request_key):
+        """A real authorized user objection, linked to an immutable published story."""
+        if not isinstance(feedback,str) or not 6<=len(feedback.strip())<=1000:raise ValueError('Concrete reconsideration feedback required')
+        with self.tx() as c:
+            old=c.execute('SELECT result FROM requests WHERE request_key=?',(request_key,)).fetchone()
+            if old:return int(old[0])
+            parent=c.execute('SELECT * FROM selections WHERE id=? AND published_id IS NOT NULL',(rid,)).fetchone()
+            if not parent:raise ValueError('Only a published story may be reconsidered')
+            row=c.execute('SELECT payload FROM candidates WHERE id=?',(parent['candidate_id'],)).fetchone()
+            source=json.loads(row[0]) if row else {}
+            if source.get('creative_version')!=2:raise ValueError('Legacy story requires an editor-supplied v2 conflict brief')
+            draft=json.loads(parent['draft_json'])
+            ref='telegram-objection:'+request_key
+            c.execute('INSERT INTO creative_appeals(parent_selection_id,parent_revision,feedback,source_ref,created_at) VALUES(?,?,?,?,?)',(rid,parent['revision'],feedback,ref,now()))
+            source['creative_brief']=dict(source['creative_brief'],preferred_format='appeal',appeal_reference=ref)
+            source['title']='재심: '+source['title'][:45]
+            generation=c.execute('SELECT COALESCE(MAX(generation),-1)+1 FROM batches WHERE day=?',(kst_day(),)).fetchone()[0]
+            batch=c.execute("INSERT INTO batches(day,generation,status,created_at) VALUES(?,?,'ready',?)",(kst_day(),generation,now())).lastrowid
+            cid=c.execute('INSERT INTO candidates(batch_id,position,title,payload,created_at) VALUES(?,1,?,?,?)',(batch,source['title'],json.dumps(source,ensure_ascii=False),now())).lastrowid
+            sid=c.execute("INSERT INTO selections(candidate_number,candidate_title,status,candidate_id,revision,revision_note) VALUES(1,?,'selected',?,1,?)",(source['title'],cid,feedback)).lastrowid
+            self.enqueue(c,f'draft:{sid}:1','draft',{'id':sid,'revision':1})
+            c.execute('INSERT INTO requests VALUES(?,?)',(request_key,str(sid)))
+            self.event(c,sid,'reconsideration_requested',json.dumps({'parent':rid,'source_ref':ref}))
+            return sid
+
     def revise(self, rid, note, maximum=3, request_key=None):
         if not note.strip() or len(note)>1000:
             raise ValueError('Revision request must contain 1–1000 characters')
@@ -172,7 +200,7 @@ class Store:
                 old=c.execute('SELECT result FROM requests WHERE request_key=?',(request_key,)).fetchone()
                 if old: return int(old[0])
             r=c.execute('SELECT * FROM selections WHERE id=?',(rid,)).fetchone()
-            if not r or r['status'] not in ('selected','preview_ready','draft_ready','revision_requested','draft_review','draft_invalid','planning_review'):
+            if not r or r['status'] not in ('selected','preview_ready','draft_ready','revision_requested','draft_review','draft_invalid','planning_review','editorial_hold'):
                 raise ValueError('Content cannot be revised in current state')
             if r['revision']>=maximum+1:
                 raise ValueError('Revision limit reached')
@@ -181,6 +209,7 @@ class Store:
             if r['draft_json'] is not None:
                 c.execute('INSERT OR IGNORE INTO draft_versions VALUES(?,?,?,?)',(rid,r['revision'],r['draft_json'],now()))
             c.execute("UPDATE selections SET revision=?,status='revision_requested',revision_note=?,approved_revision=NULL,reviewed_revision=NULL,draft_json=NULL,image_paths=NULL WHERE id=?",(rev,note,rid))
+            c.execute('UPDATE instagram_reviews SET approved=0 WHERE selection_id=?',(rid,))
             self.enqueue(c,f'draft:{rid}:{rev}','draft',{'id':rid,'revision':rev})
             self.event(c,rid,'revision_requested','editor note stored on selection')
             if request_key: c.execute('INSERT INTO requests VALUES(?,?)',(request_key,str(rev)))
@@ -201,7 +230,7 @@ class Store:
         if mode not in ('plan','image'): raise ValueError('Unknown revision mode')
         with self.tx() as c:
             r=c.execute('SELECT * FROM selections WHERE id=? AND revision=?',(rid,revision)).fetchone()
-            valid=('draft_ready','preview_ready') if mode=='image' else ('planning_review','draft_review','preview_ready')
+            valid=('draft_ready','preview_ready') if mode=='image' else ('planning_review','draft_review','preview_ready','editorial_hold')
             if not r or r['status'] not in valid: raise ValueError('Stale or unavailable content')
             c.execute('DELETE FROM feedback_pending WHERE user_key=?',(user_key,))
             c.execute('INSERT OR REPLACE INTO conversations VALUES(?,?,?,?)',(user_key,rid,revision,mode))
@@ -216,7 +245,7 @@ class Store:
             pending=c.execute('SELECT * FROM conversations WHERE user_key=?',(user_key,)).fetchone()
             if not pending: raise ValueError('먼저 기획 수정 또는 이미지 수정 버튼을 선택하세요.')
             r=c.execute('SELECT * FROM selections WHERE id=?',(pending['selection_id'],)).fetchone()
-            valid=('draft_ready','preview_ready') if pending['mode']=='image' else ('planning_review','draft_review','preview_ready')
+            valid=('draft_ready','preview_ready') if pending['mode']=='image' else ('planning_review','draft_review','preview_ready','editorial_hold')
             if not r or r['revision']!=pending['revision'] or r['status'] not in valid:
                 raise ValueError('수정 대상 버전이 변경되었습니다. 최신 버튼을 선택하세요.')
             if r['revision']>=maximum+1: raise ValueError('Revision limit reached')
@@ -234,6 +263,7 @@ class Store:
             else:
                 c.execute("UPDATE selections SET revision=?,status='revision_requested',revision_note=?,draft_json=NULL,image_paths=NULL,approved_revision=NULL,reviewed_revision=NULL WHERE id=?",(rev,note,rid))
                 self.enqueue(c,f'draft:{rid}:{rev}','draft',{'id':rid,'revision':rev})
+            c.execute('UPDATE instagram_reviews SET approved=0 WHERE selection_id=?',(rid,))
             c.execute('DELETE FROM conversations WHERE user_key=?',(user_key,))
             c.execute('INSERT INTO requests VALUES(?,?)',(request_key,str(rev)))
             self.event(c,rid,'image_revision' if pending['mode']=='image' else 'planning_revision',str(rev))

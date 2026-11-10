@@ -69,6 +69,7 @@ class PuterImages:
         self.bridge=bridge or SDKBridge(config);self.authorize=authorize or free_only_quote
     def generate(self,draft,slot,request_key,model_key='natural',mode='manual'):
         if model_key not in MODELS or mode not in ('manual','approved_test','automatic'):raise PuterBlocked('Invalid model or request mode')
+        self.config.require_paid_ai()
         prompt=prompt_for(draft,slot)
         day=dt.datetime.now(ZoneInfo('Asia/Seoul')).date().isoformat()
         with self.store.tx() as c:
