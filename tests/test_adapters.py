@@ -29,7 +29,7 @@ class AdapterTests(unittest.TestCase):
         ig.request=Mock(side_effect=[{'user_id':'123','username':'test','account_type':'MEDIA_CREATOR'},
             {'data':[{'permission':p,'status':'granted'} for p in ('instagram_business_basic','instagram_business_content_publish')]},
             {'data':[{'quota_usage':0,'config':{'quota_total':100}}]}])
-        with self.assertRaisesRegex(ExternalError,'scopes are unverified'):ig.preflight()
+        with self.assertRaisesRegex(ExternalError,'grant evidence missing'):ig.preflight()
         self.assertEqual(ig.request.call_count,1)
         ig.request=Mock(return_value={'user_id':'123','username':'test','account_type':'MEDIA_CREATOR'})
         status=ig.connection_status()

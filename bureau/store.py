@@ -47,6 +47,7 @@ class Store:
                 if name not in columns:
                     c.execute(f'ALTER TABLE selections ADD COLUMN {name} {typ}')
             statements = [
+                'CREATE TABLE IF NOT EXISTS instagram_reviews(selection_id INTEGER PRIMARY KEY, revision INTEGER NOT NULL, account_id TEXT NOT NULL, fingerprint TEXT NOT NULL, approved INTEGER NOT NULL DEFAULT 0)',
                 'CREATE TABLE IF NOT EXISTS idea_structures(candidate_id INTEGER PRIMARY KEY,title TEXT,situation TEXT,conflict TEXT,cause TEXT,verdict TEXT)',
                 'CREATE TABLE IF NOT EXISTS idea_audits(id INTEGER PRIMARY KEY,subject TEXT,payload TEXT,accepted INTEGER,checks TEXT,created_at TEXT)',
                 'CREATE TABLE IF NOT EXISTS candidate_feedback(candidate_id INTEGER PRIMARY KEY,reason TEXT NOT NULL,payload TEXT NOT NULL,created_at TEXT NOT NULL)',

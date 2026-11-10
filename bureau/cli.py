@@ -21,6 +21,7 @@ def resume(store,jid):
 def main():
     p=argparse.ArgumentParser(description='비현실문제부: all external calls disabled by default')
     sub=p.add_subparsers(dest='command',required=True)
+    review=sub.add_parser('instagram-review');review.add_argument('record_id',type=int);review.add_argument('revision',type=int)
     sub.add_parser('instagram-check');sub.add_parser('migrate'); sub.add_parser('health'); sub.add_parser('schedule');sub.add_parser('doctor');sub.add_parser('backup')
     worker=sub.add_parser('worker'); worker.add_argument('--once',action='store_true')
     repair=sub.add_parser('resume-photo');repair.add_argument('job_id',type=int)
@@ -32,7 +33,24 @@ def main():
     search=sub.add_parser('image-search');search.add_argument('query')
     download=sub.add_parser('download-image');download.add_argument('query');download.add_argument('photo_id',type=int);download.add_argument('destination')
     args=p.parse_args(); config=Config.load(); store=Store(config.db)
-    if args.command=='instagram-check':
+    if args.command=='instagram-review':
+        from .instagram import Instagram
+        from .adapters import Media
+        from .publish_review import prepare_review
+        ig=Instagram(config);ig.preflight()
+        with store.tx() as c:
+            row=c.execute('SELECT payload FROM assets WHERE selection_id=? AND revision=?',(args.record_id,args.revision)).fetchone()
+        if not row: raise ValueError('No completed card news')
+        media=json.loads(row[0]);Media(config).verify(media)
+        payload=prepare_review(store,args.record_id,args.revision,config.env['IG_ACCOUNT_ID'])
+        from .store import digest
+        key=f'instagram-review:{args.record_id}:{args.revision}:'+digest(payload)[:16]
+        with store.tx() as c:
+            store.notify(c,key+':images',{'text':f'Instagram 게시 미리보기 {args.record_id} v{args.revision} · @un_real_korea','files':media['files'],'sha256':media['sha256']})
+            payload['after_delivery']=key+':images'
+            store.notify(c,key,payload)
+        print('Instagram preview and explicit approval request queued; nothing published')
+    elif args.command=='instagram-check':
         from .instagram import Instagram
         from .adapters import ExternalError
         ig=Instagram(config)

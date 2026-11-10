@@ -354,9 +354,12 @@ class Engine:
         r=self.store.row(p['id'])
         if r['revision']!=p['revision'] or r['approved_revision']!=p['revision'] or r['reviewed_revision']!=p['revision'] or r['status'] not in ('approved','publish_waiting','published'):
             raise Waiting('Explicit review and approval of this exact revision required')
+        if hasattr(self.instagram,'assert_approval'):
+            self.instagram.assert_approval(self.store,p['id'],p['revision'])
         if r['published_id']:
             permalink=self.step(job,'ig_permalink',lambda:self.instagram.permalink(r['published_id']))
             with self.store.tx() as c:
+                self.store.event(c,p['id'],'instagram_permalink',permalink['permalink'])
                 self.store.notify(c,f'published-url:{p["id"]}',{'text':'Instagram 게시 URL: '+permalink['permalink']})
             return
         with self.store.tx() as c:
@@ -378,8 +381,9 @@ class Engine:
         media=json.loads(a[0]); draft=json.loads(r['draft_json'])
         if self.config.env.get('RENDER_DIR'):
             self.step(job,'expose_public',lambda:self.media.expose(media))
-        self.step(job,'publish_verify_public',lambda:self.media.verify(media))
-        self.instagram.preflight()  # Refresh token/permissions/quota on every explicit resume
+        # Read fresh bytes on every resume; an old verification cannot authorize changed URLs.
+        self.media.verify(media)
+        self.instagram.preflight()  # Revalidate identity, token-bound grant evidence and live quota
         with self.store.tx() as c:
             c.execute("INSERT OR IGNORE INTO publications(selection_id,revision,state,updated_at) VALUES(?,?,'preparing',?)",(p['id'],p['revision'],now()))
         children=[]
@@ -396,6 +400,8 @@ class Engine:
         with self.store.tx() as c:
             c.execute("UPDATE publications SET state='publishing',updated_at=? WHERE selection_id=?",(now(),p['id']))
         # Persist the write intent BEFORE publishing. A timeout is never auto-retried.
+        if hasattr(self.instagram,'assert_approval'):
+            self.instagram.assert_approval(self.store,p['id'],p['revision'])
         result=self.step(job,'ig_publish',lambda:self.instagram.publish(container['id']),True)
         with self.store.tx() as c:
             c.execute("UPDATE publications SET state='published',media_id=?,updated_at=? WHERE selection_id=?",(result['id'],now(),p['id']))
@@ -403,6 +409,7 @@ class Engine:
             self.store.notify(c,f'published:{p["id"]}',{'text':f'✅ 게시 완료: {p["id"]} / Instagram ID {result["id"]}\n게시 확인 시각(UTC): {now()}\n게시 URL 확인 중입니다.'})
         permalink=self.step(job,'ig_permalink',lambda:self.instagram.permalink(result['id']))
         with self.store.tx() as c:
+            self.store.event(c,p['id'],'instagram_permalink',permalink['permalink'])
             self.store.notify(c,f'published-url:{p["id"]}',{'text':f'Instagram 게시 URL: {permalink["permalink"]}\n게시 확인 시각(UTC): {now()}'})
 
     def deliver_one(self):

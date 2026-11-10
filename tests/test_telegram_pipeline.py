@@ -170,6 +170,7 @@ class CandidateFeedbackTests(unittest.TestCase):
     q=TelegramPipelineTests.q
     candidates=TelegramPipelineTests.candidates
     app=TelegramPipelineTests.app
+    preview=TelegramPipelineTests.preview
     click=TelegramPipelineTests.click
     def test_reason_buttons_and_idempotent_replacement(self):
         cid=self.candidates();self.app()
@@ -188,3 +189,19 @@ class CandidateFeedbackTests(unittest.TestCase):
         asyncio.run(self.message(update,NS()))
         self.assertEqual(self.q('SELECT reason FROM candidate_feedback')[0]['reason'],update.message.text)
         self.assertEqual(self.q('SELECT * FROM feedback_pending'),[])
+
+    def test_bound_instagram_callback_authorization_and_queue(self):
+        from bureau.publish_review import prepare_review
+        self.app();rid=self.preview()
+        payload=prepare_review(self.store,rid,1,'123')
+        data=payload['reply_markup']['inline_keyboard'][0][0]['callback_data']
+        self.click(data,uid=99)
+        self.assertFalse(self.q("SELECT * FROM jobs WHERE kind='publish'"))
+        update=NS(effective_user=NS(id=11),effective_chat=NS(id=22,type='private'),update_id=999,
+                  callback_query=NS(data=data,answer=AsyncMock(),edit_message_reply_markup=AsyncMock()))
+        asyncio.run(self.callback(update,NS()))
+        self.assertEqual(len(self.q("SELECT * FROM jobs WHERE kind='publish'")),1)
+        self.assertEqual(self.store.row(rid)['status'],'approved')
+        update.callback_query.edit_message_reply_markup.assert_awaited_once()
+        self.click(data)
+        self.assertEqual(len(self.q("SELECT * FROM jobs WHERE kind='publish'")),1)
