@@ -63,6 +63,11 @@ class Instagram:
                 'expired_by_record':int(expiry)<=time.time() if expiry.isdigit() else None,
                 'ready_to_publish':False}
 
+    def publishing_limit(self):
+        """Read-only diagnostic; quota access is not proof of a publish grant."""
+        result=self.request('GET',self.config.env['IG_ACCOUNT_ID']+'/content_publishing_limit',fields='config,quota_usage')
+        return {'data':result.get('data',[]),'publish_permission_verified':False}
+
     def child(self,url):
         return self.request('POST',self.config.env['IG_ACCOUNT_ID']+'/media',image_url=url,is_carousel_item='true')
 
