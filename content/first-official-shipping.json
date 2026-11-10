@@ -1,0 +1,15 @@
+{
+  "publication_kind": "official",
+  "case_number": "사건번호 제 2026-1110-001호",
+  "title": "무료 배송의 추가 지출 사건",
+  "source_url": null,
+  "claims": [],
+  "caption": "배송비는 0원. 지출은 1,800원 증가.\n\n무료 배송까지 남은 금액을 채우다가 세제 재고만 늘어난 사건을 접수했습니다. 여러분의 장바구니에도 ‘배송비 대신 산 물건’이 있나요?\n\n비현실문제부의 풍자 창작입니다.\n\n#비현실문제부 #무료배송 #장바구니 #충동구매 #생활공감 #일상풍자",
+  "image_queries": {"content": "unbranded laundry detergent bottle", "resolution_extra": "cardboard delivery box doorstep"},
+  "slides": [
+    {"eyebrow": "사건 접수", "headline": "배송비 3천 원 아끼려고\n4천8백 원 더 썼습니다", "body": "", "background_image": "/opt/unreal-github/data/official-shipping/6170455.jpg"},
+    {"eyebrow": "사건 경위", "headline": "무료 배송까지 2,300원", "body": "무료 배송까지 2,300원이 모자랐습니다. 배송비 3,000원을 아끼려던 신청인은 4,800원짜리 세제를 추가했습니다. 집에는 아직 뜯지 않은 세제가 두 통 있었습니다.", "emphasis": ["4,800원짜리 세제"]},
+    {"eyebrow": "최종 판정", "headline": "무료 배송 자격 취득비", "body": "신청인은 ‘배송비를 내느니 물건이라도 남는 편이 낫다’고 진술했습니다. 심의 결과, 배송비는 사라졌으나 결제 금액은 1,800원 늘었습니다. 남은 것은 세제 세 통과 절약했다는 기분이었습니다.\n\n추가 구매액을 ‘무료 배송 자격 취득비’로 분류합니다. 다음 주문에서는 배송비와 추가 구매액 중 적은 금액을 먼저 확인하도록 권고합니다. 본 건의 배송비는 무료이며, 무료는 4,800원입니다.", "emphasis": ["무료 배송 자격 취득비"]},
+    {}
+  ]
+}

@@ -21,6 +21,7 @@ def fingerprint(c, rid, revision, account):
 
 def prepare_review(store, rid, revision, account):
     import json
+    review_note=''
     with store.tx() as c:
         r=c.execute('SELECT * FROM selections WHERE id=?',(rid,)).fetchone()
         if r['published_id'] or r['status'] not in ('preview_ready','publish_waiting'): raise ValueError('Not awaiting approval')
@@ -28,8 +29,13 @@ def prepare_review(store, rid, revision, account):
         c.execute('INSERT OR REPLACE INTO instagram_reviews VALUES(?,?,?,?,0)',(rid,revision,account,fp))
         # Prior approval cannot authorize this new review.
         c.execute("UPDATE selections SET status='preview_ready',approved_revision=NULL,reviewed_revision=NULL WHERE id=?",(rid,))
-        caption=json.loads(r['draft_json'])['caption']
-    return {'text':f'Instagram 공개 게시 승인 요청\n게시 계정: @un_real_korea ({account})\n카드뉴스 5장 · 게시물 {rid} v{revision}\n미리보기 5장과 캡션을 검토한 후 승인하세요. 승인하면 공개 게시됩니다.\n\n캡션:\n'+caption,
+        draft=json.loads(r['draft_json']);caption=draft['caption']
+        if draft.get('publication_kind')=='official':
+            from .release import validate_official
+            media=json.loads(c.execute('SELECT payload FROM assets WHERE selection_id=? AND revision=?',(rid,revision)).fetchone()[0])
+            validate_official(draft,media)
+            review_note='사진: Pexels License · https://www.pexels.com/license/\n최종 승인은 원고·사진 관련성·라이선스·초상권 검토를 포함합니다.\n\n'
+    return {'text':f'Instagram 공개 게시 승인 요청\n게시 계정: @un_real_korea ({account})\n카드뉴스 5장 · 게시물 {rid} v{revision}\n미리보기 5장과 캡션을 검토한 후 승인하세요. 승인하면 공개 게시됩니다.\n\n'+review_note+'캡션:\n'+caption,
             'reply_markup':{'inline_keyboard':[[{'text':'✅ Instagram 공개 게시 승인','callback_data':f'igapprove:{rid}:{revision}:{fp[:16]}'}],[{'text':'게시 취소','callback_data':f'igcancel:{rid}:{revision}:{fp[:16]}'}]]}}
 
 

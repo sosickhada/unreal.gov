@@ -309,7 +309,7 @@ body {{
 {extra_logo_html}
 <div class="logo-symbol"><img src="{logo_url}"></div>\n<div class="logo-text">비현실문제해결부</div>
 
-<div class="case-number">사건번호 제 2026-1024호</div>
+<div class="case-number">{esc(s.get("case_number") or "사건번호 제 2026-1024호")}</div>
 <div class="top-line"></div>
 
 <div class="eyebrow">{eyebrow}</div>
@@ -436,7 +436,7 @@ async def _render(draft, prefix, progress=None):
             context = await p.chromium.launch_persistent_context(
                 user_data_dir=profile, headless=True,
                 viewport={'width': WIDTH, 'height': HEIGHT},
-                device_scale_factor=1, timeout=45000,
+                device_scale_factor=1, timeout=90000,
                 ignore_default_args=['--disable-dev-shm-usage'],
                 args=['--no-sandbox', '--no-zygote', '--single-process',
                       '--disk-cache-dir=' + str(Path(profile)/'cache'),
@@ -451,6 +451,10 @@ async def _render(draft, prefix, progress=None):
                 page = context.pages[0] if context.pages else await context.new_page()
                 session = await context.new_cdp_session(page)
                 for i, (kind, slide) in enumerate(pages):
+                    if draft.get("case_number"):
+                        slide=dict(slide,case_number=draft["case_number"])
+                    if draft.get('publication_kind')=='official' and kind=='resolution_extra':
+                        slide=dict(slide,eyebrow='심의 경과')
                     mark("page_start", page=i+1, kind=kind)
                     title = draft.get('title', '비현실문제해결부')
                     if kind=='ending':
@@ -478,6 +482,9 @@ async def _render(draft, prefix, progress=None):
                         markup = make_figma_resolution(slide, title, fonts=fonts)
                     else:
                         markup = make_fixed_slide(Path("/opt/unreal-github/figma_assets/ending_fixed.png"), inline_assets=False)
+                    if draft.get('publication_kind')=='official' and kind in ('content','resolution_extra','resolution_final'):
+                        # At 390px feed width, 40px source type remains about 14.4px.
+                        markup=markup.replace('</style>','</style><style>.eyebrow{top:710px;font-size:50px}.body{left:80px;top:810px;width:920px;font-size:40px;line-height:1.6;letter-spacing:-.6px}</style>',1)
                     needs_file = kind in ("content", "resolution_extra", "resolution_final")
                     # Navigate to RAM-backed HTML instead of transferring megabytes
                     # of embedded artwork through the Node/CDP pipe on every page.
@@ -530,7 +537,7 @@ async def _render(draft, prefix, progress=None):
                         'format':'png', 'fromSurface':True, 'captureBeyondViewport':False,
                         'optimizeForSpeed':True,
                         'clip':{'x':0,'y':0,'width':WIDTH,'height':HEIGHT,'scale':1},
-                    }), timeout=15)
+                    }), timeout=60)
                     Path(path).write_bytes(base64.b64decode(capture['data']))
                     mark('screenshot_done', page=i+1)
                     paths.append(path)

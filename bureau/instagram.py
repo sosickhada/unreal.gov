@@ -57,6 +57,12 @@ class Instagram:
     def assert_approval(self, store, record_id, revision):
         from .publish_review import assert_approved
         assert_approved(store,record_id,revision,self.config.env['IG_ACCOUNT_ID'])
+        import json
+        from .release import validate_official
+        with store.tx() as c:
+            r=c.execute('SELECT draft_json FROM selections WHERE id=?',(record_id,)).fetchone()
+            a=c.execute('SELECT payload FROM assets WHERE selection_id=? AND revision=?',(record_id,revision)).fetchone()
+            validate_official(json.loads(r['draft_json']),json.loads(a['payload']))
 
     def connection_status(self):
         """Read-only connectivity is separate from authorization to publish."""

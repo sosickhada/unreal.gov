@@ -1,5 +1,9 @@
 # Instagram Login 게시 준비 및 운영 절차
 
+후속 상태: 기존 4번 v2는 사용자 지시에 따라 테스트 게시물로 철회했다.
+첫 공식 콘텐츠는 7번 v2이며 [제작 기록](first-official-content.md)을 참조한다.
+아래 4번 전송 기록은 당시 연동 확인 이력이다.
+
 2026-11-10 운영 실측 (비밀값은 기록하지 않음):
 
 - `graph.instagram.com/v25.0/me`: HTTP 200, `un_real_korea`,

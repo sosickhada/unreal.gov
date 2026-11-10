@@ -270,6 +270,9 @@ class Engine:
             provenance={'photos':chosen}
         media=self.step(job,'render',lambda:self.media.render(draft,p['id'],p['revision']))
         media['image_provenance']=provenance
+        if draft.get('publication_kind')=='official':
+            from .release import validate_official
+            validate_official(draft,media)
         # Persist artifacts before network validation/delivery.
         with self.store.tx() as c:
             c.execute('INSERT OR REPLACE INTO assets VALUES(?,?,?,?)',(p['id'],p['revision'],json.dumps(media),now()))
@@ -292,7 +295,14 @@ class Engine:
                 approval['text']+='\n자동 검사는 권리·AI 여부를 보증하지 않습니다. 부적절하면 이미지 수정을 선택하세요.'
 
             approval['after_delivery']=f'media:{p["id"]}:{p["revision"]}'
-            self.store.notify(c,f'approval:{p["id"]}:{p["revision"]}',approval)
+            if draft.get('publication_kind')!='official':
+                self.store.notify(c,f'approval:{p["id"]}:{p["revision"]}',approval)
+        if draft.get('publication_kind')=='official':
+            from .publish_review import prepare_review
+            approval=prepare_review(self.store,p['id'],p['revision'],self.config.env['IG_ACCOUNT_ID'])
+            approval['after_delivery']=f'media:{p["id"]}:{p["revision"]}'
+            with self.store.tx() as c:
+                self.store.notify(c,f'instagram-final:{p["id"]}:{p["revision"]}',approval)
 
     def puter_image(self,job,p):
         from .puter_images import PuterImages, PuterBlocked

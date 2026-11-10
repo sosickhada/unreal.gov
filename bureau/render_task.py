@@ -26,6 +26,14 @@ def main():
         paths=[prefix+f'_{i:02}.png' for i in completed]
         pending=Path(target+'.pending');pending.write_text(json.dumps(paths))
         pending.replace(target)
-    render_carousel(draft,prefix,progress)
+    try:
+        render_carousel(draft,prefix,progress)
+    except Exception as exc:
+        # Store safe categories only; provider URLs, credentials and exception text stay private.
+        detail=str(exc).lower()
+        categories=[name for name in ('timeout','permission denied','operation not permitted','cannot allocate memory','executable doesn') if name in detail]
+        if 'Timeout' in type(exc).__name__ and 'timeout' not in categories:categories.append('timeout')
+        progress('render_failed',{'error_type':type(exc).__name__,'categories':categories})
+        raise
 
 if __name__=='__main__':main()
