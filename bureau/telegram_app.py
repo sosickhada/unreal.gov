@@ -165,6 +165,13 @@ def build_app(config):
                 from .photo_review import approve
                 ready=approve(store,int(parts[1]),int(parts[2]),int(parts[3]),parts[4],str(update.effective_user.id))
                 text='사진 검토 기록을 저장했습니다. '+('두 사진이 준비되어 렌더링을 재개합니다.' if ready else '다른 슬롯의 사진도 검토·선택하세요.')
+            elif action=='igblocked':
+                await query.answer('게시 권한과 이미지 수집이 아직 검증되지 않아 게시할 수 없습니다.',show_alert=True)
+                return
+            elif action=='igclose':
+                await query.edit_message_reply_markup(reply_markup=None)
+                await query.answer('미리보기를 닫았습니다. 게시 작업은 생성되지 않았습니다.')
+                return
             elif action=='candidate':
                 rid=store.select(int(parts[1])); text=f'후보 선택 접수: {rid}. 기획안을 생성한 뒤 승인 버튼을 보내드립니다. /preview {rid}'
             elif action=='batchregen':
@@ -257,7 +264,7 @@ def build_app(config):
     app=ApplicationBuilder().token(e['TELEGRAM_BOT_TOKEN']).build()
     for name in ('whoami','start','candidates','newcandidates','images','photos','upload','imagebudget','status','preview','revise','review','acceptdraft','retry','resend'):
         app.add_handler(CommandHandler(name,command))
-    app.add_handler(CallbackQueryHandler(callback,pattern=r'^(pmodel|upstart|imgsearch|aigen|airegen|imagebudget|photos|boring|boringreason|photopick|candidate|batchregen|batchreject|planapprove|planedit|imageedit|back|approve|reject|regenerate):'))
+    app.add_handler(CallbackQueryHandler(callback,pattern=r'^(igblocked|igclose|pmodel|upstart|imgsearch|aigen|airegen|imagebudget|photos|boring|boringreason|photopick|candidate|batchregen|batchreject|planapprove|planedit|imageedit|back|approve|reject|regenerate):'))
     app.add_handler(CommandHandler('cancelrevision',cancel_revision))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,revision_message))
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE,upload_message))
