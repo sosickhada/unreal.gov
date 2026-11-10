@@ -118,6 +118,21 @@ class Media:
 
     def verify(self, media):
         self.config.require_external()
+        from PIL import Image
+        files=media.get('files',[])
+        urls=media.get('urls',[])
+        hashes=media.get('sha256',[])
+        if not (len(files)==len(urls)==len(hashes)==5):
+            raise ValueError('Exactly five publishing images required')
+        if len(set(urls))!=5 or len(set(hashes))!=5:
+            raise ValueError('Duplicate publishing images rejected')
+        for path, expected_hash in zip(files,hashes):
+            data=Path(path).read_bytes()
+            if len(data)>8_000_000 or hashlib.sha256(data).hexdigest()!=expected_hash:
+                raise ValueError('Publishing asset changed or exceeds size limit')
+            with Image.open(path) as im:
+                if im.format!='JPEG' or im.size!=(1080,1350) or im.mode!='RGB':
+                    raise ValueError('Publishing image must be RGB JPEG 1080x1350')
         expected=urlparse(self.config.env.get('PUBLIC_BASE_URL','')).netloc
         for url in media['urls']:
             if not safe_https(url) or urlparse(url).netloc!=expected:
