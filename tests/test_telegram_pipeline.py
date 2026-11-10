@@ -39,6 +39,13 @@ class TelegramPipelineTests(unittest.TestCase):
         update=NS(effective_user=NS(id=uid),effective_chat=NS(id=22,type='private'),update_id=update_id,message=NS(text=text))
         asyncio.run(self.message(update,NS()))
 
+    def test_blocked_instagram_clicks_never_enqueue_publication(self):
+        self.app()
+        first=self.click('igblocked:test-20261110:1',update_id=201)
+        self.click('igblocked:test-20261110:1',update_id=202)
+        first.callback_query.answer.assert_awaited_once()
+        self.assertFalse(self.q("SELECT * FROM jobs WHERE kind='publish'"))
+
     def test_buttons_plan_revision_render_image_revision_and_publish(self):
         self.app();cid=self.candidates()
         self.click(f'candidate:{cid}');self.click(f'candidate:{cid}')
